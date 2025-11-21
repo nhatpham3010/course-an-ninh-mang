@@ -337,7 +337,7 @@ export default function Payment() {
         const { apiUrl } = getConfig();
         const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const response = await axios.get(
-          `${baseApiUrl}/payment?trang_thai=pending`,
+          `${baseApiUrl}/payment`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -346,11 +346,23 @@ export default function Payment() {
         );
 
         const payments = response.data.data || response.data;
-        if (Array.isArray(payments) && payments.length > 0) {
-          setPendingPayment(payments[0]); // Lấy payment đầu tiên đang pending
+        
+        // Filter chỉ lấy payment có trang_thai === 'pending'
+        if (Array.isArray(payments)) {
+          const pendingPayments = payments.filter(
+            (payment) => payment.trang_thai === "pending"
+          );
+          if (pendingPayments.length > 0) {
+            setPendingPayment(pendingPayments[0]); // Lấy payment đầu tiên đang pending
+          } else {
+            setPendingPayment(null); // Không có payment pending
+          }
+        } else {
+          setPendingPayment(null);
         }
       } catch (error) {
         console.error("Error checking pending payment:", error);
+        setPendingPayment(null);
       } finally {
         setCheckingPayment(false);
       }
