@@ -7,8 +7,11 @@ import {
   Mail,
   Phone,
   MapPin,
+  CheckCircle,
 } from "lucide-react";
-
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 import Header from "../../../components/Header/Header";
 import { Link } from "react-router-dom";
 import { ENDPOINTS } from "../../../routes/endPoints";
@@ -51,17 +54,29 @@ const PricingCard = ({
   icon,
   badge,
   highlighted = false,
+  isCurrentPackage = false,
+  isDisabled = false,
+  packageType, // 'basic', 'premium', 'year'
 }) => (
   <div
-    className={`relative p-8 rounded-2xl backdrop-blur-sm border transition-all hover:scale-105 ${
-      highlighted
-        ? "border-magenta-primary/50 bg-gradient-to-br from-magenta-lighter to-magenta-secondary/20"
-        : "border-glass-border bg-glass-white"
+    className={`relative p-8 rounded-2xl backdrop-blur-sm border transition-all ${
+      isDisabled
+        ? "opacity-50 cursor-not-allowed"
+        : highlighted
+          ? "border-magenta-primary/50 bg-gradient-to-br from-magenta-lighter to-magenta-secondary/20 hover:scale-105"
+          : "border-glass-border bg-glass-white hover:scale-105"
     }`}
   >
     {badge && (
-      <div className="absolute -top-3 -right-3 bg-gradient-to-r from-magenta-primary to-magenta-secondary px-4 py-1 rounded-full">
+      <div className="absolute -top-3 -right-3 bg-gradient-to-r from-magenta-primary to-magenta-secondary px-4 py-1 rounded-full z-10">
         <span className="text-white text-sm font-medium">{badge}</span>
+      </div>
+    )}
+    
+    {isCurrentPackage && (
+      <div className="absolute -top-3 -left-3 bg-gradient-to-r from-green-500 to-green-600 px-4 py-1 rounded-full z-10 flex items-center gap-1">
+        <CheckCircle className="w-4 h-4 text-white" />
+        <span className="text-white text-sm font-medium">Đang sử dụng</span>
       </div>
     )}
 
@@ -73,7 +88,7 @@ const PricingCard = ({
 
       <div className="mb-2">
         <span className="text-white text-4xl font-bold font-roboto">
-          {price}
+          {price.toLocaleString("vi-VN")}
         </span>
       </div>
 
@@ -89,86 +104,140 @@ const PricingCard = ({
       ))}
     </div>
 
-    <Link
-      to={ENDPOINTS.USER.PAYMENT}
-      state={{
-        title: title,
-        price: price,
-        period: period,
-        features: features,
-      }}
-    >
+    {isDisabled ? (
       <button
-        className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
-          buttonVariant === "primary"
-            ? "bg-gradient-to-r from-magenta-primary to-magenta-secondary text-white shadow-lg hover:shadow-xl"
-            : buttonVariant === "certificate"
-              ? "bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg hover:shadow-xl"
-              : "bg-gradient-to-r from-gray-600 to-gray-700 text-white hover:from-gray-500 hover:to-gray-600"
-        }`}
+        disabled
+        className="w-full py-3 px-6 rounded-lg font-medium bg-gray-500 text-gray-300 cursor-not-allowed"
       >
-        {buttonText}
+        Gói thấp hơn gói hiện tại
       </button>
-    </Link>
+    ) : isCurrentPackage ? (
+      <button
+        disabled
+        className="w-full py-3 px-6 rounded-lg font-medium bg-green-600 text-white cursor-not-allowed"
+      >
+        Đang sử dụng gói này
+      </button>
+    ) : (
+      <Link
+        to={ENDPOINTS.USER.PAYMENT}
+        state={{
+          title: title,
+          price: price,
+          period: period,
+          features: features,
+        }}
+      >
+        <button
+          className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
+            buttonVariant === "primary"
+              ? "bg-gradient-to-r from-magenta-primary to-magenta-secondary text-white shadow-lg hover:shadow-xl"
+              : buttonVariant === "certificate"
+                ? "bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg hover:shadow-xl"
+                : "bg-gradient-to-r from-gray-600 to-gray-700 text-white hover:from-gray-500 hover:to-gray-600"
+          }`}
+        >
+          {buttonText}
+        </button>
+      </Link>
+    )}
   </div>
 );
 
-const Pricing = () => (
-  <section className="py-20 px-4">
-    <div className="max-w-6xl mx-auto">
-      <div className="grid md:grid-cols-3 gap-8">
-        <PricingCard
-          title="Gói Cơ Bản"
-          price={39000}
-          period="VNĐ / tháng"
-          icon={<Book className="w-8 h-8" />}
-          features={[
-            "Truy cập 20+ khóa học cơ bản",
-            "Tài liệu học tập PDF",
-            "Video bài giảng HD",
-            "Diễn đàn thảo luận",
-            "Hỗ trợ email cơ bản",
-          ]}
-          buttonText="Bắt đầu học ngay"
-        />
+const Pricing = ({ currentPackage, currentCourseType }) => {
+  // Package priority: free < basic < premium < year
+  const packagePriority = {
+    free: 0,
+    basic: 1,
+    premium: 2,
+    year: 3,
+  };
 
-        <PricingCard
-          title="Gói Nâng Cao"
-          price={89000}
-          period="VNĐ / tháng"
-          icon={<Zap className="w-8 h-8" />}
-          features={[
-            "Tất cả tính năng gói Cơ Bản",
-            "Truy cập 100+ khóa học cao cấp",
-            "Phòng lab thực hành cao cấp",
-            "Bài tập thực hành CTF",
-            "Dự án thực tế với doanh nghiệp",
-          ]}
-          buttonText="Chọn gói này"
-          buttonVariant="primary"
-          badge="Phổ biến"
-          highlighted={true}
-        />
+  const getPackageType = (title) => {
+    if (title === "Gói Cơ Bản") return "basic";
+    if (title === "Gói Nâng Cao") return "premium";
+    if (title === "Khóa Chứng Chỉ" || title === "Gói Năm") return "year";
+    return "free";
+  };
 
-        <PricingCard
-          title="Khóa Chứng Chỉ"
-          price={1299000}
-          period="VNĐ / khóa học"
-          icon={<Award className="w-8 h-8" />}
-          features={[
-            "Khóa học chuyên sâu 3-6 tháng",
-            "Chứng chỉ LozoAcademy",
-            "Bài tập thực hành chuyên sâu",
-            "Mock exam và đánh giá",
-            "Hỗ trợ đăng ký thi chính thức",
-          ]}
-          buttonText="Xem các khóa chứng chỉ"
-          buttonVariant="certificate"
-        />
+  const isCurrentPackage = (title) => {
+    if (!currentPackage) return false;
+    return title === currentPackage;
+  };
+
+  const isDisabled = (packageType) => {
+    if (!currentCourseType || currentCourseType === "free") return false;
+    const currentPriority = packagePriority[currentCourseType] || 0;
+    const packagePriorityValue = packagePriority[packageType] || 0;
+    return packagePriorityValue < currentPriority;
+  };
+
+  return (
+    <section className="py-20 px-4">
+      <div className="max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-8">
+          <PricingCard
+            title="Gói Cơ Bản"
+            price={39000}
+            period="VNĐ / tháng"
+            icon={<Book className="w-8 h-8" />}
+            features={[
+              "Truy cập 20+ khóa học cơ bản",
+              "Tài liệu học tập PDF",
+              "Video bài giảng HD",
+              "Diễn đàn thảo luận",
+              "Hỗ trợ email cơ bản",
+            ]}
+            buttonText="Bắt đầu học ngay"
+            packageType="basic"
+            isCurrentPackage={isCurrentPackage("Gói Cơ Bản")}
+            isDisabled={isDisabled("basic")}
+          />
+
+          <PricingCard
+            title="Gói Nâng Cao"
+            price={89000}
+            period="VNĐ / tháng"
+            icon={<Zap className="w-8 h-8" />}
+            features={[
+              "Tất cả tính năng gói Cơ Bản",
+              "Truy cập 100+ khóa học cao cấp",
+              "Phòng lab thực hành cao cấp",
+              "Bài tập thực hành CTF",
+              "Dự án thực tế với doanh nghiệp",
+            ]}
+            buttonText="Chọn gói này"
+            buttonVariant="primary"
+            badge="Phổ biến"
+            highlighted={true}
+            packageType="premium"
+            isCurrentPackage={isCurrentPackage("Gói Nâng Cao")}
+            isDisabled={isDisabled("premium")}
+          />
+
+          <PricingCard
+            title="Gói Năm"
+            price={1299000}
+            period="VNĐ / khóa học"
+            icon={<Award className="w-8 h-8" />}
+            features={[
+              "Khóa học chuyên sâu 3-6 tháng",
+              "Chứng chỉ LozoAcademy",
+              "Bài tập thực hành chuyên sâu",
+              "Mock exam và đánh giá",
+              "Hỗ trợ đăng ký thi chính thức",
+            ]}
+            buttonText="Chọn gói này"
+            buttonVariant="certificate"
+            packageType="year"
+            isCurrentPackage={isCurrentPackage("Gói Năm")}
+            isDisabled={isDisabled("year")}
+          />
+        </div>
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const FAQ = () => {
   const faqs = [
@@ -384,11 +453,51 @@ const Footer = () => (
 );
 
 export default function Packages() {
+  const [userInfo, setUserInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const token = localStorage.getItem("access_token");
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+        const response = await axios.get(`${baseApiUrl}/user`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = response.data.data || response.data;
+        setUserInfo(data.userInfo);
+      } catch (error) {
+        console.error("Lỗi khi tải thông tin user:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserInfo();
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white">
+        Đang tải...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-violet-dark to-black text-white font-inter">
       <Header />
       <Hero />
-      <Pricing />
+      <Pricing 
+        currentPackage={userInfo?.currentPackage || null}
+        currentCourseType={userInfo?.course_type || "free"}
+      />
       <FAQ />
       <CTA />
       <Footer />
