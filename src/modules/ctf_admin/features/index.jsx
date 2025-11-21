@@ -443,6 +443,8 @@ import {
   X,
   FileUp,
   CreditCard,
+  Edit,
+  Trash2,
 } from "lucide-react";
 
 const CTF = () => {
@@ -457,6 +459,8 @@ const CTF = () => {
   // Popup / form states
   const [showPopup, setShowPopup] = useState(false);
   const [popupUploading, setPopupUploading] = useState(false);
+  const [editingCTF, setEditingCTF] = useState(null); // null = create mode, object = edit mode
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null); // CTF ID to delete
 
   // state chính cho CTF mới — dùng đúng tên backend yêu cầu
   const [newCTF, setNewCTF] = useState({
@@ -581,6 +585,114 @@ const CTF = () => {
     }
   };
 
+  // ----- Mở popup để edit CTF -----
+  const handleEditCTF = (ctf) => {
+    setEditingCTF(ctf);
+    setNewCTF({
+      ten: ctf.title || "",
+      mota: ctf.description || "",
+      loaictf: ctf.category || "",
+      tacgia: ctf.author || "",
+      choai: ctf.difficulty === "Beginner" ? "Sinh viên" : ctf.difficulty === "Intermediate" ? "Mọi người" : "Người học",
+      pdf_url: "",
+      points: ctf.points || "",
+      duration: ctf.duration || "",
+    });
+    setShowPopup(true);
+  };
+
+  // ----- Xóa CTF (DELETE) -----
+  const handleDeleteCTF = async (ctfId) => {
+    try {
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+      await axios.delete(
+        `${baseApiUrl}/ctf/${ctfId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      toast.success("✅ Xóa CTF thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      setShowDeleteConfirm(null);
+      fetchCTFData();
+    } catch (err) {
+      console.error("Lỗi khi xóa CTF:", err);
+      const message = err?.response?.data?.message || "Không thể xóa CTF, vui lòng thử lại!";
+      toast.error(`❌ ${message}`, {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    }
+  };
+
+  // ----- Update CTF (PUT) -----
+  const handleUpdateCTF = async () => {
+    const { ten, mota, loaictf, tacgia, choai, pdf_url, points, duration } = newCTF;
+
+    if (!ten || !loaictf || !tacgia || !choai) {
+      toast.warning("⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề (choai)!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
+    try {
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+      await axios.put(
+        `${baseApiUrl}/ctf/${editingCTF.id}`,
+        {
+          ten,
+          mota: mota || null,
+          loaictf,
+          tacgia,
+          choai,
+          pdf_url: pdf_url || null,
+          points: points ? Number(points) : 0,
+          duration: duration || "0 minutes",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      toast.success("✅ Cập nhật CTF thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      setShowPopup(false);
+      setEditingCTF(null);
+      setNewCTF({
+        ten: "",
+        mota: "",
+        loaictf: "",
+        tacgia: "",
+        choai: "",
+        pdf_url: "",
+        points: "",
+        duration: "",
+      });
+      fetchCTFData();
+    } catch (err) {
+      console.error("Lỗi khi cập nhật CTF:", err);
+      const message = err?.response?.data?.message || "Không thể cập nhật CTF, vui lòng thử lại!";
+      toast.error(`❌ ${message}`, {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    }
+  };
+
   // ----- Tạo CTF (POST) sử dụng đúng tên field backend yêu cầu -----
   const handleCreateCTF = async () => {
     const { ten, mota, loaictf, tacgia, choai, pdf_url, points, duration } =
@@ -628,6 +740,7 @@ const CTF = () => {
         autoClose: 3000,
       });
       setShowPopup(false);
+      setEditingCTF(null);
       // reset form
       setNewCTF({
         ten: "",
@@ -767,7 +880,20 @@ const CTF = () => {
           </p>
 
           <button
-            onClick={() => setShowPopup(true)}
+            onClick={() => {
+              setEditingCTF(null);
+              setNewCTF({
+                ten: "",
+                mota: "",
+                loaictf: "",
+                tacgia: "",
+                choai: "",
+                pdf_url: "",
+                points: "",
+                duration: "",
+              });
+              setShowPopup(true);
+            }}
             className="px-8 py-4 bg-gradient-to-r from-lozo-dark to-lozo-secondary text-white rounded-[10px] font-semibold shadow-lg hover:shadow-xl transition-all"
           >
             <PlusCircle className="w-5 h-5 inline mr-2" />
@@ -781,14 +907,27 @@ const CTF = () => {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50">
           <div className="bg-[#1E1B2E] p-6 rounded-[10px] w-[92%] max-w-[640px] relative border border-lozo-primary/30">
             <button
-              onClick={() => setShowPopup(false)}
+              onClick={() => {
+                setShowPopup(false);
+                setEditingCTF(null);
+                setNewCTF({
+                  ten: "",
+                  mota: "",
+                  loaictf: "",
+                  tacgia: "",
+                  choai: "",
+                  pdf_url: "",
+                  points: "",
+                  duration: "",
+                });
+              }}
               className="absolute top-3 right-3 text-gray-400 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
 
             <h2 className="text-2xl font-bold text-white mb-4">
-              Tạo thử thách CTF
+              {editingCTF ? "Chỉnh sửa thử thách CTF" : "Tạo thử thách CTF"}
             </h2>
 
             <div className="space-y-3 max-h-[62vh] overflow-y-auto pr-2">
@@ -930,17 +1069,28 @@ const CTF = () => {
               <button
                 onClick={() => {
                   setShowPopup(false);
+                  setEditingCTF(null);
+                  setNewCTF({
+                    ten: "",
+                    mota: "",
+                    loaictf: "",
+                    tacgia: "",
+                    choai: "",
+                    pdf_url: "",
+                    points: "",
+                    duration: "",
+                  });
                 }}
                 className="px-4 py-2 bg-gray-700/40 text-white rounded-md"
               >
                 Hủy
               </button>
               <button
-                onClick={handleCreateCTF}
+                onClick={editingCTF ? handleUpdateCTF : handleCreateCTF}
                 className="px-4 py-2 bg-gradient-to-r from-lozo-primary to-lozo-secondary text-white rounded-md"
                 disabled={popupUploading}
               >
-                Tạo CTF
+                {editingCTF ? "Cập nhật CTF" : "Tạo CTF"}
               </button>
             </div>
           </div>
@@ -1028,7 +1178,7 @@ const CTF = () => {
                       </div>
                     </div>
 
-                    <div className="text-right flex flex-col justify-between items-end">
+                    <div className="text-right flex flex-col justify-between items-end gap-3">
                       <div>
                         <div className="text-3xl text-experience font-semibold">
                           {ch.points}
@@ -1036,12 +1186,26 @@ const CTF = () => {
                         <div className="text-xs text-gray-400">điểm</div>
                       </div>
 
-                      <Link
-                        to={`/ctf/${ch.id}`}
-                        className="px-6 py-2 bg-gradient-to-r from-lozo-dark to-lozo-secondary text-white rounded-[10px] flex items-center gap-2"
-                      >
-                        <Play className="w-4 h-4" /> Chi tiết
-                      </Link>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditCTF(ch)}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-[10px] flex items-center gap-2 transition-colors"
+                        >
+                          <Edit className="w-4 h-4" /> Sửa
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(ch.id)}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-[10px] flex items-center gap-2 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" /> Xóa
+                        </button>
+                        <Link
+                          to={`/ctf/${ch.id}`}
+                          className="px-4 py-2 bg-gradient-to-r from-lozo-dark to-lozo-secondary text-white rounded-[10px] flex items-center gap-2"
+                        >
+                          <Play className="w-4 h-4" /> Chi tiết
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1050,6 +1214,34 @@ const CTF = () => {
           )}
         </section>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50">
+          <div className="bg-[#1E1B2E] p-6 rounded-[10px] w-[92%] max-w-[480px] relative border border-red-500/30">
+            <h2 className="text-2xl font-bold text-white mb-4">
+              Xác nhận xóa CTF
+            </h2>
+            <p className="text-gray-300 mb-6">
+              Bạn có chắc chắn muốn xóa CTF này? Hành động này không thể hoàn tác.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 bg-gray-700/40 text-white rounded-md"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => handleDeleteCTF(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md"
+              >
+                Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
