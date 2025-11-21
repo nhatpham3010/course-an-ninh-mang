@@ -359,7 +359,10 @@ const CTF = () => {
                         <div className="text-xs text-gray-400">điểm</div>
                       </div>
                       {isCompleted ? (
-                        <button className="px-6 py-2 bg-green-700/30 text-green-400 rounded-[10px] flex items-center gap-2">
+                        <button
+                          onClick={() => handleCTFClick(ch.id)}
+                          className="px-6 py-2 bg-green-700/30 text-green-400 rounded-[10px] flex items-center gap-2 hover:opacity-90 transition-opacity"
+                        >
                           <CheckCircle className="w-4 h-4" /> Hoàn thành
                         </button>
                       ) : (
