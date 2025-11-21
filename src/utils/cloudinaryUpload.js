@@ -32,6 +32,9 @@ export const uploadToCloudinary = async (file, options = {}) => {
     if (uploadFolder) {
       formData.append("folder", uploadFolder);
     }
+    
+    // Note: access_mode should be configured in the upload preset settings in Cloudinary dashboard
+    // For unsigned uploads, access_mode cannot be set via API parameter
 
     // Upload directly to Cloudinary using upload preset
     const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${cloudinary.cloudName}/${resourceType}/upload`;

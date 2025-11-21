@@ -305,6 +305,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { toast } from "react-toastify";
 import { getConfig } from "../../../configs/getConfig.config";
 import {
   ArrowLeft,
@@ -349,6 +350,62 @@ const CTFDetail = () => {
   const [submitResult, setSubmitResult] = useState(null); // null | 'success' | 'error'
   const [submitMessage, setSubmitMessage] = useState("");
 
+  // State cho timer
+  const [timeRemaining, setTimeRemaining] = useState(null); // seconds
+  const [timerStarted, setTimerStarted] = useState(false);
+  const [timerExpired, setTimerExpired] = useState(false);
+
+  // Parse duration từ string (ví dụ: "15 minutes", "1 hour 30 minutes") sang seconds
+  const parseDurationToSeconds = (duration) => {
+    if (!duration) return null;
+    
+    // Nếu là string
+    if (typeof duration === "string") {
+      let totalSeconds = 0;
+      
+      // Parse "15 minutes" hoặc "15 phút"
+      const minutesMatch = duration.match(/(\d+)\s*(?:minutes?|ph[uú]t)/i);
+      if (minutesMatch) {
+        totalSeconds += parseInt(minutesMatch[1]) * 60;
+      }
+      
+      // Parse "1 hour" hoặc "1 giờ"
+      const hoursMatch = duration.match(/(\d+)\s*(?:hours?|gi[ờơ])/i);
+      if (hoursMatch) {
+        totalSeconds += parseInt(hoursMatch[1]) * 3600;
+      }
+      
+      // Parse "45 seconds" hoặc "45 giây"
+      const secondsMatch = duration.match(/(\d+)\s*(?:seconds?|giây)/i);
+      if (secondsMatch) {
+        totalSeconds += parseInt(secondsMatch[1]);
+      }
+      
+      // Parse "1 hour 30 minutes"
+      const hourMinutesMatch = duration.match(/(\d+)\s*(?:hours?|gi[ờơ])\s*(\d+)\s*(?:minutes?|ph[uú]t)/i);
+      if (hourMinutesMatch) {
+        totalSeconds = parseInt(hourMinutesMatch[1]) * 3600 + parseInt(hourMinutesMatch[2]) * 60;
+      }
+      
+      return totalSeconds > 0 ? totalSeconds : null;
+    }
+    
+    // Nếu là object (PostgreSQL INTERVAL)
+    if (typeof duration === "object") {
+      const { years, months, days, hours, minutes, seconds } = duration;
+      let totalSeconds = 0;
+      if (years) totalSeconds += years * 365 * 24 * 3600;
+      if (months) totalSeconds += months * 30 * 24 * 3600;
+      if (days) totalSeconds += days * 24 * 3600;
+      if (hours) totalSeconds += hours * 3600;
+      if (minutes) totalSeconds += minutes * 60;
+      if (seconds) totalSeconds += seconds;
+      return totalSeconds > 0 ? totalSeconds : null;
+    }
+    
+    return null;
+  };
+
   useEffect(() => {
     const fetchctf = async () => {
       try {
@@ -363,6 +420,36 @@ const CTFDetail = () => {
         // Backend trả về: { error_code: 0, message: "Success", data: {...} }
         const ctfData = res.data.data || res.data;
         setctf(ctfData);
+        
+        // Khởi tạo timer nếu có duration
+        if (ctfData.duration) {
+          const durationSeconds = parseDurationToSeconds(ctfData.duration);
+          if (durationSeconds) {
+            // Kiểm tra xem đã có timer trong localStorage chưa
+            const timerKey = `ctf_timer_${id}`;
+            const savedTimer = localStorage.getItem(timerKey);
+            
+            if (savedTimer) {
+              const { startTime, duration } = JSON.parse(savedTimer);
+              const elapsed = Math.floor((Date.now() - startTime) / 1000);
+              const remaining = duration - elapsed;
+              
+              if (remaining > 0) {
+                setTimeRemaining(remaining);
+                setTimerStarted(true);
+              } else {
+                setTimerExpired(true);
+                localStorage.removeItem(timerKey);
+              }
+            } else {
+              // Bắt đầu timer mới
+              const startTime = Date.now();
+              localStorage.setItem(timerKey, JSON.stringify({ startTime, duration: durationSeconds }));
+              setTimeRemaining(durationSeconds);
+              setTimerStarted(true);
+            }
+          }
+        }
       } catch (error) {
         console.error("Lỗi khi tải ctf:", error);
       } finally {
@@ -372,6 +459,26 @@ const CTFDetail = () => {
 
     fetchctf();
   }, [id]);
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (!timerStarted || timerExpired || timeRemaining === null) return;
+
+    const interval = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          setTimerExpired(true);
+          const timerKey = `ctf_timer_${id}`;
+          localStorage.removeItem(timerKey);
+          toast.warning("⏰ Hết thời gian làm bài!", { position: "top-center", autoClose: 5000 });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timerStarted, timerExpired, id]);
 
   // Xử lý chọn file
   const handleFileSelect = async (e) => {
@@ -430,6 +537,13 @@ const CTFDetail = () => {
   // Xử lý nộp đáp án
   const handleSubmitAnswer = async (e) => {
     e.preventDefault();
+    
+    // Kiểm tra timer đã hết chưa
+    if (timerExpired) {
+      setSubmitResult("error");
+      setSubmitMessage("⏰ Hết thời gian làm bài! Không thể nộp đáp án.");
+      return;
+    }
     
     if (!answerText && !answerFile) {
       setSubmitResult("error");
@@ -518,6 +632,43 @@ const CTFDetail = () => {
         >
           <ArrowLeft className="w-5 h-5 mr-2" /> Quay lại danh sách ctfs
         </button>
+
+        {/* Timer - Hiển thị nổi bật */}
+        {timerStarted && timeRemaining !== null && (
+          <div className={`mb-6 rounded-2xl shadow-xl overflow-hidden ${
+            timerExpired 
+              ? "bg-gradient-to-r from-red-600 to-red-700" 
+              : timeRemaining <= 300 
+                ? "bg-gradient-to-r from-orange-600 to-orange-700" 
+                : "bg-gradient-to-r from-blue-600 to-blue-700"
+          }`}>
+            <div className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-white/80 text-sm font-medium">Thời gian còn lại</p>
+                    <p className={`text-3xl font-bold text-white ${
+                      timerExpired ? "animate-pulse" : ""
+                    }`}>
+                      {timerExpired 
+                        ? "00:00:00" 
+                        : `${Math.floor(timeRemaining / 3600).toString().padStart(2, '0')}:${Math.floor((timeRemaining % 3600) / 60).toString().padStart(2, '0')}:${(timeRemaining % 60).toString().padStart(2, '0')}`
+                      }
+                    </p>
+                  </div>
+                </div>
+                {timerExpired && (
+                  <div className="px-4 py-2 bg-white/20 rounded-lg">
+                    <p className="text-white font-semibold">⏰ Hết thời gian</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Thông tin CTF */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-8">
@@ -633,21 +784,54 @@ const CTFDetail = () => {
           <div className="p-8">
             {ctf.pdfUrl || ctf.pdf_url ? (
               <div className="space-y-4">
+              {/* Hiển thị PDF trực tiếp từ Cloudinary */}
+              <div className="w-full h-[600px] border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden bg-gray-100">
               <iframe
                   src={ctf.pdfUrl || ctf.pdf_url}
-                title="ctf PDF"
-                  className="w-full h-[600px] border-2 border-gray-200 rounded-xl shadow-lg"
-              />
-              <a
-                  href={ctf.pdfUrl || ctf.pdf_url}
-                download
-                target="_blank"
-                rel="noopener noreferrer"
+                  title="CTF PDF"
+                  className="w-full h-full"
+                  allow="fullscreen"
+                  onError={() => {
+                    console.error('Error loading PDF in iframe');
+                  }}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    window.open(ctf.pdfUrl || ctf.pdf_url, '_blank');
+                  }}
+                  className="inline-flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-700 transition-colors"
+                >
+                  <BookOpen className="w-5 h-5" />
+                  Mở trong tab mới
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const pdfUrl = ctf.pdfUrl || ctf.pdf_url;
+                      const response = await fetch(pdfUrl);
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `ctf-${ctf.title || id}.pdf`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      window.URL.revokeObjectURL(url);
+                      toast.success('Đang tải file PDF...', { position: "top-right", autoClose: 2000 });
+                    } catch (error) {
+                      console.error('Error downloading PDF:', error);
+                      toast.error('Không thể tải file PDF', { position: "top-right", autoClose: 3000 });
+                    }
+                  }}
                   className="inline-flex items-center gap-2 bg-gradient-to-r from-lozo-purple to-lozo-purple-light text-white px-6 py-3 rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg"
-              >
+                >
                   <FileDown className="w-5 h-5" />
-                Tải về file PDF
-              </a>
+                  Tải về file PDF
+                </button>
+              </div>
               </div>
             ) : (
               <div className="text-center py-12">
@@ -698,8 +882,8 @@ const CTFDetail = () => {
                       <p className="text-gray-700 font-semibold mb-2">File đã nộp:</p>
                       <a
                         href={ctf.submittedFile}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                target="_blank"
+                rel="noopener noreferrer"
                         className="text-blue-600 hover:underline flex items-center gap-2"
                       >
                         <FileDown className="w-4 h-4" />
@@ -794,13 +978,13 @@ const CTFDetail = () => {
                     <ImageIcon className="h-4 w-4" />
                     <span>File đã được upload thành công</span>
                   </div>
-                )}
-              </div>
+          )}
+        </div>
 
               {/* Submit Button */}
             <button
               type="submit"
-                disabled={submitting || uploadingFile || (!answerText && !answerFile)}
+                disabled={submitting || uploadingFile || (!answerText && !answerFile) || timerExpired}
                 className="w-full px-8 py-4 bg-gradient-to-r from-lozo-purple to-lozo-purple-light text-white rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {submitting ? (
@@ -845,8 +1029,8 @@ const CTFDetail = () => {
                       {submitMessage || "Vui lòng thử lại!"}
                     </p>
                   </div>
-                </div>
-              )}
+            </div>
+          )}
             </form>
             )}
           </div>

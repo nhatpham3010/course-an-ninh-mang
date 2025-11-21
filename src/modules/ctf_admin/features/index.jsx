@@ -421,6 +421,7 @@ import { toast } from "react-toastify";
 import { Link } from "react-router-dom";
 import { ENDPOINTS } from "../../../routes/endPoints";
 import { getConfig } from "../../../configs/getConfig.config";
+import { uploadToCloudinary } from "../../../utils/cloudinaryUpload";
 import {
   Shield,
   Users,
@@ -471,7 +472,8 @@ const CTF = () => {
     choai: "",
     pdf_url: "",
     points: "",
-    duration: "", // ex: "45 minutes"
+    duration_value: "", // Số lượng
+    duration_unit: "minutes", // Đơn vị: seconds, minutes, hours
   });
 
   const token = localStorage.getItem("access_token") || null;
@@ -528,14 +530,23 @@ const CTF = () => {
     setStatus("");
   };
 
-  // ----- Hàm upload file PDF (theo đúng logic bạn đưa) -----
+  // ----- Hàm upload file PDF lên Cloudinary trực tiếp -----
   const handlePopupSelectAndUpload = async (e) => {
     const file = e.target.files?.[0] || null;
     if (!file) return;
 
-    // kiểm tra type pdf (optional)
+    // kiểm tra type pdf
     if (file.type !== "application/pdf") {
       toast.error("Vui lòng chọn file PDF hợp lệ!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Kích thước file không được vượt quá 10MB!", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -545,30 +556,18 @@ const CTF = () => {
     try {
       setPopupUploading(true);
 
-      // encode filename giống hàm bạn đưa
-      const filename = encodeURIComponent(file.name);
-      const { apiUrl } = getConfig();
-      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
-      const backendURL = `${baseApiUrl}/upload/presign`;
-
-      // Lấy presigned URL từ backend (GET ?filename=...)
-      const res = await axios.get(`${backendURL}?filename=${filename}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      // Upload trực tiếp lên Cloudinary
+      // Dùng resource_type: "image" để có thể xem trực tiếp PDF trong browser
+      const uploadResult = await uploadToCloudinary(file, {
+        folder: "ctf-pdfs", // Folder riêng cho CTF PDFs
+        resourceType: "image", // Dùng "image" để xem trực tiếp trong browser
       });
 
-      // Backend trả về: { error_code: 0, message: "Success", data: { url: ... } }
-      const presignData = res.data.data || res.data;
-      const { url } = presignData;
-      if (!url) throw new Error("Không nhận được presigned URL từ backend");
+      if (!uploadResult || !uploadResult.url) {
+        throw new Error("Upload thành công nhưng không nhận được URL từ Cloudinary");
+      }
 
-      // PUT file lên presigned URL
-      await axios.put(url, file, {
-        headers: { "Content-Type": "application/pdf" },
-      });
-
-      // lấy url sạch (bỏ querystring) -> lưu vào pdf_url
-      const fileUrl = url.split("?")[0];
-      setNewCTF((prev) => ({ ...prev, pdf_url: fileUrl }));
+      setNewCTF((prev) => ({ ...prev, pdf_url: uploadResult.url }));
 
       toast.success("✅ Upload PDF thành công!", {
         position: "top-right",
@@ -576,7 +575,7 @@ const CTF = () => {
       });
     } catch (error) {
       console.error("Upload lỗi:", error);
-      toast.error("❌ Upload PDF thất bại!", {
+      toast.error(error.message || "❌ Upload PDF thất bại!", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -585,20 +584,124 @@ const CTF = () => {
     }
   };
 
+  // ----- Convert duration từ value + unit sang PostgreSQL INTERVAL format -----
+  const convertDurationToInterval = (value, unit) => {
+    if (!value || value === "") return "0 minutes";
+    const numValue = parseInt(value) || 0;
+    if (numValue <= 0) return "0 minutes";
+    
+    // Map unit to PostgreSQL format
+    const unitMap = {
+      seconds: "seconds",
+      minutes: "minutes",
+      hours: "hours",
+    };
+    
+    const pgUnit = unitMap[unit] || "minutes";
+    return `${numValue} ${pgUnit}`;
+  };
+
+  // ----- Convert duration từ PostgreSQL INTERVAL sang value + unit -----
+  const convertIntervalToValueAndUnit = (interval) => {
+    if (!interval) return { value: "", unit: "minutes" };
+    
+    // Nếu là object (PostgreSQL INTERVAL serialized)
+    if (typeof interval === "object") {
+      const { years, months, days, hours, minutes, seconds } = interval;
+      
+      if (years) return { value: String(years), unit: "hours" }; // Convert years to hours for simplicity
+      if (months) return { value: String(months * 30 * 24), unit: "hours" }; // Approximate
+      if (days) return { value: String(days * 24), unit: "hours" };
+      if (hours) return { value: String(hours), unit: "hours" };
+      if (minutes) return { value: String(minutes), unit: "minutes" };
+      if (seconds) return { value: String(seconds), unit: "seconds" };
+      
+      return { value: "", unit: "minutes" };
+    }
+    
+    // Nếu là string
+    if (typeof interval === "string") {
+      // Parse "15 minutes", "1 hour", "45 seconds", etc.
+      const minutesMatch = interval.match(/(\d+)\s*minutes?/i);
+      if (minutesMatch) {
+        return { value: minutesMatch[1], unit: "minutes" };
+      }
+      
+      const hoursMatch = interval.match(/(\d+)\s*hours?/i);
+      if (hoursMatch) {
+        return { value: hoursMatch[1], unit: "hours" };
+      }
+      
+      const secondsMatch = interval.match(/(\d+)\s*seconds?/i);
+      if (secondsMatch) {
+        return { value: secondsMatch[1], unit: "seconds" };
+      }
+      
+      // Parse HH:MM:SS format
+      const timeMatch = interval.match(/(\d+):(\d+):(\d+)/);
+      if (timeMatch) {
+        const hours = parseInt(timeMatch[1]) || 0;
+        const minutes = parseInt(timeMatch[2]) || 0;
+        const seconds = parseInt(timeMatch[3]) || 0;
+        
+        if (hours > 0) {
+          return { value: String(hours * 60 + minutes), unit: "minutes" };
+        } else if (minutes > 0) {
+          return { value: String(minutes), unit: "minutes" };
+        } else {
+          return { value: String(seconds), unit: "seconds" };
+        }
+      }
+    }
+    
+    return { value: "", unit: "minutes" };
+  };
+
   // ----- Mở popup để edit CTF -----
-  const handleEditCTF = (ctf) => {
-    setEditingCTF(ctf);
-    setNewCTF({
-      ten: ctf.title || "",
-      mota: ctf.description || "",
-      loaictf: ctf.category || "",
-      tacgia: ctf.author || "",
-      choai: ctf.difficulty === "Beginner" ? "Sinh viên" : ctf.difficulty === "Intermediate" ? "Mọi người" : "Người học",
-      pdf_url: "",
-      points: ctf.points || "",
-      duration: ctf.duration || "",
-    });
-    setShowPopup(true);
+  const handleEditCTF = async (ctf) => {
+    try {
+      // Fetch CTF detail để lấy đầy đủ thông tin bao gồm pdf_url
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+      const response = await axios.get(
+        `${baseApiUrl}/ctf/${ctf.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      const ctfDetail = response.data.data || response.data;
+      
+      // Lấy duration từ database và convert sang value + unit
+      const rawDuration = ctfDetail.duration || ctf.duration || "";
+      const { value: durationValue, unit: durationUnit } = convertIntervalToValueAndUnit(rawDuration);
+      
+      setEditingCTF(ctf);
+      setNewCTF({
+        ten: ctfDetail.title || ctf.title || "",
+        mota: ctfDetail.description || ctf.description || "",
+        loaictf: ctfDetail.category || ctf.category || "",
+        tacgia: ctfDetail.author || ctf.author || "",
+        choai: ctfDetail.difficulty === "Beginner" || ctf.difficulty === "Beginner" 
+          ? "Sinh viên" 
+          : ctfDetail.difficulty === "Intermediate" || ctf.difficulty === "Intermediate"
+          ? "Mọi người"
+          : "Người học",
+        pdf_url: ctfDetail.pdfUrl || ctfDetail.pdf_url || "",
+        points: ctfDetail.points || ctf.points || "",
+        duration_value: durationValue,
+        duration_unit: durationUnit,
+      });
+      setShowPopup(true);
+    } catch (error) {
+      console.error("Error fetching CTF detail:", error);
+      toast.error("Không thể tải chi tiết CTF", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    }
   };
 
   // ----- Xóa CTF (DELETE) -----
@@ -633,10 +736,10 @@ const CTF = () => {
 
   // ----- Update CTF (PUT) -----
   const handleUpdateCTF = async () => {
-    const { ten, mota, loaictf, tacgia, choai, pdf_url, points, duration } = newCTF;
+    const { ten, mota, loaictf, tacgia, choai, pdf_url, points, duration_value, duration_unit } = newCTF;
 
     if (!ten || !loaictf || !tacgia || !choai) {
-      toast.warning("⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề (choai)!", {
+      toast.warning("⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề!", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -644,6 +747,9 @@ const CTF = () => {
     }
 
     try {
+      // Convert duration từ value + unit sang PostgreSQL INTERVAL
+      const intervalDuration = convertDurationToInterval(duration_value, duration_unit);
+      
       const { apiUrl } = getConfig();
       const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       await axios.put(
@@ -656,7 +762,7 @@ const CTF = () => {
           choai,
           pdf_url: pdf_url || null,
           points: points ? Number(points) : 0,
-          duration: duration || "0 minutes",
+          duration: intervalDuration,
         },
         {
           headers: {
@@ -680,7 +786,8 @@ const CTF = () => {
         choai: "",
         pdf_url: "",
         points: "",
-        duration: "",
+        duration_value: "",
+        duration_unit: "minutes",
       });
       fetchCTFData();
     } catch (err) {
@@ -695,13 +802,13 @@ const CTF = () => {
 
   // ----- Tạo CTF (POST) sử dụng đúng tên field backend yêu cầu -----
   const handleCreateCTF = async () => {
-    const { ten, mota, loaictf, tacgia, choai, pdf_url, points, duration } =
+    const { ten, mota, loaictf, tacgia, choai, pdf_url, points, duration_value, duration_unit } =
       newCTF;
 
     // validate giống backend: ten, loaictf, tacgia, choai là bắt buộc
     if (!ten || !loaictf || !tacgia || !choai) {
       toast.warning(
-        "⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề (choai)!",
+        "⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề!",
         {
           position: "top-right",
           autoClose: 3000,
@@ -711,6 +818,9 @@ const CTF = () => {
     }
 
     try {
+      // Convert duration từ value + unit sang PostgreSQL INTERVAL
+      const intervalDuration = convertDurationToInterval(duration_value, duration_unit);
+      
       // Gửi về endpoint tạo CTF của backend - sử dụng cùng base với GET list
       const { apiUrl } = getConfig();
       const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
@@ -724,7 +834,7 @@ const CTF = () => {
           choai,
           pdf_url: pdf_url || null,
           points: points ? Number(points) : 0,
-          duration: duration || "0 minutes",
+          duration: intervalDuration,
         },
         {
           headers: {
@@ -750,7 +860,8 @@ const CTF = () => {
         choai: "",
         pdf_url: "",
         points: "",
-        duration: "",
+        duration_value: "",
+        duration_unit: "minutes",
       });
       // reload danh sách
       fetchCTFData();
@@ -890,7 +1001,8 @@ const CTF = () => {
                 choai: "",
                 pdf_url: "",
                 points: "",
-                duration: "",
+                duration_value: "",
+                duration_unit: "minutes",
               });
               setShowPopup(true);
             }}
@@ -918,7 +1030,8 @@ const CTF = () => {
                   choai: "",
                   pdf_url: "",
                   points: "",
-                  duration: "",
+                  duration_value: "",
+                  duration_unit: "minutes",
                 });
               }}
               className="absolute top-3 right-3 text-gray-400 hover:text-white"
@@ -932,7 +1045,7 @@ const CTF = () => {
 
             <div className="space-y-3 max-h-[62vh] overflow-y-auto pr-2">
               <div>
-                <label className="block text-gray-300 mb-1">Tên (ten) *</label>
+                <label className="block text-gray-300 mb-1">Tên *</label>
                 <input
                   type="text"
                   value={newCTF.ten}
@@ -944,7 +1057,7 @@ const CTF = () => {
               </div>
 
               <div>
-                <label className="block text-gray-300 mb-1">Mô tả (mota)</label>
+                <label className="block text-gray-300 mb-1">Mô tả</label>
                 <textarea
                   rows={3}
                   value={newCTF.mota}
@@ -958,7 +1071,7 @@ const CTF = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-gray-300 mb-1">
-                    Loại CTF (loaictf) *
+                    Loại CTF *
                   </label>
                   <input
                     type="text"
@@ -971,7 +1084,7 @@ const CTF = () => {
                 </div>
                 <div>
                   <label className="block text-gray-300 mb-1">
-                    Tác giả (tacgia) *
+                    Tác giả *
                   </label>
                   <input
                     type="text"
@@ -986,7 +1099,7 @@ const CTF = () => {
 
               <div>
                 <label className="block text-gray-300 mb-1">
-                  Chủ đề / Choai (choai) *
+                  Chủ đề *
                 </label>
                 <input
                   type="text"
@@ -1001,7 +1114,7 @@ const CTF = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-gray-300 mb-1">
-                    Điểm (points)
+                    Điểm
                   </label>
                   <input
                     type="number"
@@ -1014,23 +1127,38 @@ const CTF = () => {
                 </div>
                 <div>
                   <label className="block text-gray-300 mb-1">
-                    Thời lượng (duration) — ví dụ: &quot;45 minutes&quot;
+                    Thời lượng
                   </label>
-                  <input
-                    type="text"
-                    value={newCTF.duration}
-                    onChange={(e) =>
-                      setNewCTF({ ...newCTF, duration: e.target.value })
-                    }
-                    className="w-full px-3 py-2 rounded-md bg-gray-800 text-white"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={newCTF.duration_value}
+                      onChange={(e) =>
+                        setNewCTF({ ...newCTF, duration_value: e.target.value })
+                      }
+                      placeholder="15"
+                      min="0"
+                      className="flex-1 px-3 py-2 rounded-md bg-gray-800 text-white"
+                    />
+                    <select
+                      value={newCTF.duration_unit}
+                      onChange={(e) =>
+                        setNewCTF({ ...newCTF, duration_unit: e.target.value })
+                      }
+                      className="px-3 py-2 rounded-md bg-gray-800 text-white"
+                    >
+                      <option value="seconds">Giây</option>
+                      <option value="minutes">Phút</option>
+                      <option value="hours">Giờ</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
               {/* Upload PDF */}
               <div>
                 <label className="block text-gray-300 mb-1">
-                  Tệp PDF (upload lên S3)
+                  Tệp PDF
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -1039,10 +1167,13 @@ const CTF = () => {
                     accept="application/pdf"
                     onChange={handlePopupSelectAndUpload}
                     className="hidden"
+                    disabled={popupUploading}
                   />
                   <label
                     htmlFor="ctf-upload-pdf"
-                    className="px-4 py-2 rounded-md bg-gray-700 text-white cursor-pointer inline-flex items-center gap-2"
+                    className={`px-4 py-2 rounded-md bg-gray-700 text-white cursor-pointer inline-flex items-center gap-2 ${
+                      popupUploading ? "opacity-50 cursor-not-allowed" : "hover:bg-gray-600"
+                    }`}
                   >
                     <FileUp className="w-4 h-4" />
                     {popupUploading ? "Đang upload..." : "Chọn PDF"}
@@ -1052,15 +1183,14 @@ const CTF = () => {
                       href={newCTF.pdf_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-sm text-green-400 underline"
+                      className="text-sm text-green-400 underline hover:text-green-300"
                     >
                       Xem file đã upload
                     </a>
                   )}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Sau khi chọn file, hệ thống sẽ upload lên S3 và tự điền
-                  pdf_url.
+                  Sau khi chọn file, hệ thống sẽ upload trực tiếp lên Cloudinary và tự điền pdf_url. (Tối đa 10MB)
                 </p>
               </div>
             </div>
@@ -1078,7 +1208,8 @@ const CTF = () => {
                     choai: "",
                     pdf_url: "",
                     points: "",
-                    duration: "",
+                    duration_value: "",
+                    duration_unit: "minutes",
                   });
                 }}
                 className="px-4 py-2 bg-gray-700/40 text-white rounded-md"
