@@ -30,8 +30,11 @@ export const ENDPOINTS = Object.freeze({
     ABOUT: "/user/about",
     ADMINLAB: "/admin/lab-admin",
     ADMINCTF: "/admin/ctf-admin",
+    ADMINPAYMENT: "/admin/payment-admin",
     CTFDETAIL: "/ctf/:id",
     LABDETAIL: "/labs/:id",
     PAYMENTSUCCESS: "/payment/return",
+    PROFILE: "/user/profile",
+    PACKAGES: "/user/packages",
   },
 });

@@ -114,6 +114,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 import { ArrowLeft, FileDown, Shield, Users, LogOut, Bell } from "lucide-react";
 import Header from "../../../components/Header/Header";
 import { ENDPOINTS } from "../../../routes/endPoints";
@@ -130,13 +131,17 @@ const LabDetail = () => {
   useEffect(() => {
     const fetchLab = async () => {
       try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const res = await axios.get(
-          `https://course-an-ninh-mang-backend.vercel.app/api/courses/lab-detail/${id}`,
+          `${baseApiUrl}/labs/${id}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
-        setLab(res.data);
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const labData = res.data.data || res.data;
+        setLab(labData);
       } catch (error) {
         console.error("Lỗi khi tải lab:", error);
       } finally {

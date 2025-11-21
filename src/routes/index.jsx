@@ -11,6 +11,7 @@ import {
 } from "react-router-dom";
 import Loading from "../components/Loading";
 import RequiredPermission from "../components/RequiredPermission";
+import RequiredAdmin from "../components/RequiredAdmin";
 import { ENDPOINTS } from "./endPoints";
 import LandingLayout from "../layouts/LandingLayout";
 import DashboardLayout from "../layouts/DashboardLayout";
@@ -68,6 +69,7 @@ const courseManamentPage = {
   component: lazy(() => delayRoute()(import("../modules/manament/features"))),
   title: `Manament | ${WEB_NAME}`,
   Layout: LandingLayout,
+  requireAdmin: true,
 };
 const noTestPage = {
   path: ENDPOINTS.USER.NOTEST,
@@ -149,6 +151,7 @@ const adminDashboardPage = {
   ),
   title: `Dashboard | ${WEB_NAME}`,
   Layout: LandingLayout,
+  requireAdmin: true,
 };
 const userDashboardPage = {
   path: ENDPOINTS.USER.USERDASHBOARD,
@@ -202,6 +205,7 @@ const courseLabAdminPage = {
   ),
   title: `Lab Admin | ${WEB_NAME}`,
   Layout: LandingLayout,
+  requireAdmin: true,
 };
 const labDetailPage = {
   path: ENDPOINTS.USER.LABDETAIL,
@@ -227,6 +231,7 @@ const courseCTFAdminPage = {
   ),
   title: `CFT Admin | ${WEB_NAME}`,
   Layout: LandingLayout,
+  requireAdmin: true,
 };
 const coursesAdminPage = {
   path: ENDPOINTS.USER.ADMINCOURSE,
@@ -235,6 +240,16 @@ const coursesAdminPage = {
   ),
   title: `Course Admin | ${WEB_NAME}`,
   Layout: LandingLayout,
+  requireAdmin: true,
+};
+const paymentAdminPage = {
+  path: ENDPOINTS.USER.ADMINPAYMENT,
+  component: lazy(() =>
+    delayRoute()(import("../modules/payment_admin/features/index"))
+  ),
+  title: `Payment Admin | ${WEB_NAME}`,
+  Layout: LandingLayout,
+  requireAdmin: true,
 };
 const paymentSuccessPage = {
   path: ENDPOINTS.USER.PAYMENTSUCCESS,
@@ -242,6 +257,22 @@ const paymentSuccessPage = {
     delayRoute()(import("../modules/paymentsuccess/features/index"))
   ),
   title: `Payment Success | ${WEB_NAME}`,
+  Layout: LandingLayout,
+};
+const userProfilePage = {
+  path: ENDPOINTS.USER.PROFILE,
+  component: lazy(() =>
+    delayRoute()(import("../modules/userprofile/features/index"))
+  ),
+  title: `Thông tin tài khoản | ${WEB_NAME}`,
+  Layout: LandingLayout,
+};
+const packagesPage = {
+  path: ENDPOINTS.USER.PACKAGES,
+  component: lazy(() =>
+    delayRoute()(import("../modules/packages/features/index"))
+  ),
+  title: `Chọn gói học | ${WEB_NAME}`,
   Layout: LandingLayout,
 };
 
@@ -275,7 +306,10 @@ export const publicRoutesData = [
   courseCTFAdminPage,
   ctfDetailPage,
   coursesAdminPage,
+  paymentAdminPage,
   paymentSuccessPage,
+  userProfilePage,
+  packagesPage,
 ];
 
 // Improved route rendering function
@@ -286,6 +320,7 @@ const renderRoutes = (routes, isPrivate = false) => {
       path,
       Layout,
       requiredPermissions,
+      requireAdmin,
       ...rest
     } = route;
 
@@ -303,7 +338,16 @@ const renderRoutes = (routes, isPrivate = false) => {
 
     let element = content;
 
-    if (isPrivate) {
+    // Kiểm tra nếu route yêu cầu admin
+    if (requireAdmin) {
+      element = (
+        <RequiredAuth path={ENDPOINTS.AUTH.LOGIN}>
+          <RequiredAdmin>
+            {content}
+          </RequiredAdmin>
+        </RequiredAuth>
+      );
+    } else if (isPrivate) {
       element = (
         <RequiredAuth path={ENDPOINTS.AUTH.LOGIN}>
           {requiredPermissions ? (
@@ -325,7 +369,7 @@ const renderRoutes = (routes, isPrivate = false) => {
         {...rest}
         key={`${isPrivate ? "private" : "public"}-route-${index}`}
         path={path}
-        element={element} // ✅ Fix: sử dụng biến element đã build đúng
+        element={element}
       />
     );
   });

@@ -10,7 +10,7 @@ export default function CallToAction() {
           {/* Primary CTA Button */}
           <button className="flex items-center justify-center gap-2 md:gap-3 px-6 md:px-8 py-3 md:py-4 bg-gradient-to-r from-[#9333EA] to-[#DB2777] rounded-xl text-white font-bold text-base md:text-lg font-roboto hover:opacity-90 transition-opacity">
             <Crown className="w-4 h-4 md:w-5 md:h-5" strokeWidth={1.75} />
-            <Link to={ENDPOINTS.USER.COURSE} className="text-center">
+            <Link to={ENDPOINTS.USER.PACKAGES} className="text-center">
               Nâng cấp ngay - Chỉ từ 39K/tháng
             </Link>
             <ArrowRight className="w-4 h-4 md:w-5 md:h-5" strokeWidth={1.75} />

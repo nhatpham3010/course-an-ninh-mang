@@ -295,8 +295,10 @@
 // }
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { getConfig } from "../../../../configs/getConfig.config";
 import { Button } from "@mui/material";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { ENDPOINTS } from "../../../../routes/endPoints";
 import {
   ArrowRight,
   Clock,
@@ -306,7 +308,11 @@ import {
   Globe,
   Eye,
   Smartphone,
+  X,
+  AlertCircle,
+  Award,
 } from "lucide-react";
+import { toast } from "react-toastify";
 
 const ICONS = {
   Shield,
@@ -390,6 +396,7 @@ const CourseCard = ({
   duration,
   rating,
   id,
+  onEnrollClick,
 }) => (
   <div className="group flex flex-col justify-between h-full rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-sm overflow-hidden hover:border-brand-primary/30 transition-all duration-300">
     {/* Hình ảnh + cấp độ */}
@@ -440,47 +447,124 @@ const CourseCard = ({
 
       {/* Nút cố định ở đáy */}
       <div className="mt-auto">
-        <Link to={`/user/demo/${id}`}>
-          <Button
-            fullWidth
-            className="!mt-6 !bg-gradient-to-r from-[#5C065E] to-brand-secondary hover:from-[#5C065E]/90 hover:to-brand-secondary/90 !text-white font-semibold group"
-          >
-            Bắt đầu khóa học
-            <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-          </Button>
-        </Link>
+        <Button
+          fullWidth
+          onClick={() => onEnrollClick(id)}
+          className="!mt-6 !bg-gradient-to-r from-[#5C065E] to-brand-secondary hover:from-[#5C065E]/90 hover:to-brand-secondary/90 !text-white font-semibold group"
+        >
+          Bắt đầu khóa học
+          <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+        </Button>
       </div>
     </div>
   </div>
 );
 export default function Courses() {
+  const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [userInfo, setUserInfo] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState(null);
   const token = localStorage.getItem("access_token");
 
   useEffect(() => {
     const fetchCourses = async () => {
       try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+        
+        // Build headers - only include Authorization if token exists
+        const headers = {};
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+        
         const res = await axios.get(
-          "https://course-an-ninh-mang-backend.vercel.app/api/courses",
+          `${baseApiUrl}/courses`,
+          { headers }
+        );
+        // Backend trả về: { error_code: 0, message: "Success", data: { courses: [...], stats: {...} } }
+        const responseData = res.data.data || res.data;
+        setCourses(responseData.courses || []);
+        setStats(responseData.stats || null);
+      } catch (err) {
+        console.error("❌ Lỗi tải khóa học:", err);
+        // If 401, try without auth
+        if (err.response?.status === 401 && !token) {
+          try {
+            const { apiUrl } = getConfig();
+            const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+            const res = await axios.get(`${baseApiUrl}/courses`);
+            const responseData = res.data.data || res.data;
+            setCourses(responseData.courses || []);
+            setStats(responseData.stats || null);
+          } catch (retryErr) {
+            console.error("❌ Lỗi tải khóa học (retry):", retryErr);
+          }
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const fetchUserInfo = async () => {
+      // Only fetch user info if token exists
+      if (!token) {
+        return;
+      }
+      
+      try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+        const response = await axios.get(
+          `${baseApiUrl}/user`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           }
         );
-        setCourses(res.data.courses);
-        setStats(res.data.stats);
+        const dashboardData = response.data.data || response.data;
+        setUserInfo(dashboardData.userInfo);
       } catch (err) {
-        console.error("❌ Lỗi tải khóa học:", err);
-      } finally {
-        setLoading(false);
+        console.error("❌ Lỗi tải thông tin user:", err);
       }
     };
 
     fetchCourses();
-  }, []);
+    fetchUserInfo();
+  }, [token]);
+
+  const handleEnrollClick = (courseId) => {
+    // Check if user is logged in
+    if (!token) {
+      // User not logged in, navigate to login
+      navigate(ENDPOINTS.AUTH.LOGIN);
+      return;
+    }
+
+    // Kiểm tra xem user có gói học không
+    if (!userInfo?.currentPackage) {
+      // Chưa có gói, hiển thị modal
+      setSelectedCourseId(courseId);
+      setShowUpgradeModal(true);
+    } else {
+      // Đã có gói, cho phép vào khóa học
+      navigate(`/user/demo/${courseId}`);
+    }
+  };
+
+  const handleUpgradeRedirect = () => {
+    setShowUpgradeModal(false);
+    navigate(ENDPOINTS.USER.PACKAGES); // Navigate to package selection page
+  };
+
+  const handleCloseModal = () => {
+    setShowUpgradeModal(false);
+    setSelectedCourseId(null);
+  };
 
   if (loading) {
     return (
@@ -510,9 +594,61 @@ export default function Courses() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
           {courses.map((course) => {
             const Icon = ICONS[course.levelIcon] || Shield;
-            return <CourseCard key={course.id} {...course} levelIcon={Icon} />;
+            return (
+              <CourseCard
+                key={course.id}
+                {...course}
+                levelIcon={Icon}
+                onEnrollClick={handleEnrollClick}
+              />
+            );
           })}
         </div>
+
+        {/* Modal thông báo cần nâng cấp */}
+        {showUpgradeModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 max-w-md w-full p-6 shadow-2xl">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-r from-yellow-500 to-orange-500 flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">
+                    Cần nâng cấp gói học
+                  </h3>
+                </div>
+                <button
+                  onClick={handleCloseModal}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-6 leading-relaxed">
+                Để tham gia khóa học này, bạn cần nâng cấp gói học. Vui lòng chọn
+                một gói học phù hợp để tiếp tục.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCloseModal}
+                  className="flex-1 px-4 py-3 rounded-lg border border-gray-600 text-white hover:bg-gray-700 transition-colors font-medium"
+                >
+                  Đóng
+                </button>
+                <button
+                  onClick={handleUpgradeRedirect}
+                  className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity font-medium flex items-center justify-center gap-2"
+                >
+                  <Award className="w-4 h-4" />
+                  Nâng cấp ngay
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         {stats && (

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 import {
   Shield,
   Users,
@@ -25,9 +26,10 @@ import {
 } from "lucide-react";
 import Header from "../../../components/Header/Header";
 import { ENDPOINTS } from "../../../routes/endPoints";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const CTF = () => {
+  const navigate = useNavigate();
   const [ctfData, setCtfData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -38,6 +40,17 @@ const CTF = () => {
 
   // Lấy token từ localStorage hoặc context (giả sử dùng JWT)
   const token = localStorage.getItem("access_token") || null;
+
+  const handleCTFClick = (ctfId) => {
+    // Check if user is logged in
+    if (!token) {
+      // User not logged in, navigate to login
+      navigate(ENDPOINTS.AUTH.LOGIN);
+      return;
+    }
+    // User is logged in, navigate to CTF detail
+    navigate(`/ctf/${ctfId}`);
+  };
 
   // Hàm gọi API với bộ lọc
   const fetchCTFData = async () => {
@@ -50,20 +63,40 @@ const CTF = () => {
       if (difficulty) params.difficulty = difficulty;
       if (status) params.status = status;
 
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+      
+      // Build headers - only include Authorization if token exists
+      const headers = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      
       const response = await axios.get(
-        "https://course-an-ninh-mang-backend.vercel.app/api/courses/ctf",
+        `${baseApiUrl}/ctf`,
         {
           params,
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
         }
       );
-      setCtfData(response.data);
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const ctfData = response.data.data || response.data;
+      setCtfData(ctfData);
     } catch (err) {
       console.error("Error fetching CTF data:", err);
       if (err.response?.status === 401) {
-        setError("Vui lòng đăng nhập để xem CTF");
+        // Allow viewing CTF list without login, but show message
+        setError("");
+        // Try to fetch without auth if 401
+        try {
+          const { apiUrl } = getConfig();
+          const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+          const response = await axios.get(`${baseApiUrl}/ctf`, { params });
+          const ctfData = response.data.data || response.data;
+          setCtfData(ctfData);
+        } catch (retryErr) {
+          setError("Vui lòng đăng nhập để xem CTF");
+        }
       } else if (err.response?.status === 404) {
         setError("Không có dữ liệu CTF phù hợp");
       } else {
@@ -330,12 +363,12 @@ const CTF = () => {
                           <CheckCircle className="w-4 h-4" /> Hoàn thành
                         </button>
                       ) : (
-                        <Link
-                          to={`/ctf/${ch.id}`}
-                          className="px-6 py-2 bg-gradient-to-r from-lozo-dark to-lozo-secondary text-white rounded-[10px] flex items-center gap-2"
+                        <button
+                          onClick={() => handleCTFClick(ch.id)}
+                          className="px-6 py-2 bg-gradient-to-r from-lozo-dark to-lozo-secondary text-white rounded-[10px] flex items-center gap-2 hover:opacity-90 transition-opacity"
                         >
                           <Play className="w-4 h-4" /> Bắt đầu
-                        </Link>
+                        </button>
                       )}
                     </div>
                   </div>

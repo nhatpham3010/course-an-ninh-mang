@@ -287,26 +287,30 @@
 //     </div>
 //   );
 // }
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { toast } from "react-toastify";
 import Header from "../../../components/Header/Header";
 import { ENDPOINTS } from "../../../routes/endPoints";
 import {
   ChevronLeft,
   Check,
-  Smartphone,
   Building2,
   Shield,
   Loader2,
+  Upload,
+  X,
+  Image as ImageIcon,
 } from "lucide-react";
+import { uploadPaymentProof } from "../../../utils/cloudinaryUpload";
+import { getConfig } from "../../../configs/getConfig.config";
 
 export default function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
-  const [paymentMethod, setPaymentMethod] = useState("momo");
+  const [paymentMethod, setPaymentMethod] = useState("bank_transfer");
   const [formData, setFormData] = useState({
     ho_ten: "",
     email: "",
@@ -314,25 +318,53 @@ export default function Payment() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isReturnSuccess, setIsReturnSuccess] = useState(false);
+  const [proofImage, setProofImage] = useState(null);
+  const [proofImagePreview, setProofImagePreview] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(null);
+  const [checkingPayment, setCheckingPayment] = useState(true);
 
-  // === XỬ LÝ RETURN TỪ MOMO (paymentId trong URL) ===
+  // === KIỂM TRA THANH TOÁN ĐANG CHỜ DUYỆT ===
   useEffect(() => {
-    const paymentId = searchParams.get("paymentId");
-    if (paymentId && location.pathname.includes("/payment/return")) {
-      setIsReturnSuccess(true);
-      setTimeout(() => {
-        navigate(ENDPOINTS.USER.COURSES, { replace: true });
-      }, 2500);
-    }
-  }, [searchParams, location.pathname, navigate]);
+    const checkPendingPayment = async () => {
+      try {
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+          navigate(ENDPOINTS.USER.LOGIN);
+          return;
+        }
+
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+        const response = await axios.get(
+          `${baseApiUrl}/payment?trang_thai=pending`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const payments = response.data.data || response.data;
+        if (Array.isArray(payments) && payments.length > 0) {
+          setPendingPayment(payments[0]); // Lấy payment đầu tiên đang pending
+        }
+      } catch (error) {
+        console.error("Error checking pending payment:", error);
+      } finally {
+        setCheckingPayment(false);
+      }
+    };
+
+    checkPendingPayment();
+  }, [navigate]);
 
   // === KIỂM TRA DỮ LIỆU GÓI HỌC ===
   useEffect(() => {
-    if (!location.state && !isReturnSuccess) {
-      navigate(ENDPOINTS.USER.COURSE);
+    if (!location.state) {
+      navigate(ENDPOINTS.USER.COURSES);
     }
-  }, [location.state, navigate, isReturnSuccess]);
+  }, [location.state, navigate]);
 
   const packageData = location.state || {};
   const {
@@ -346,6 +378,64 @@ export default function Payment() {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setError("");
+  };
+
+  // Handle proof image selection
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Vui lòng chọn file hình ảnh!");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Kích thước file không được vượt quá 5MB!");
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      setError("");
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProofImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+
+      // Upload to Cloudinary
+      const uploadResult = await uploadPaymentProof(file);
+      console.log("Upload result:", uploadResult); // Debug log
+      
+      if (!uploadResult || !uploadResult.url) {
+        throw new Error("Upload thành công nhưng không nhận được URL ảnh!");
+      }
+      
+      setProofImage({
+        file,
+        url: uploadResult.url,
+        publicId: uploadResult.publicId,
+      });
+      
+      console.log("Proof image set:", uploadResult.url); // Debug log
+    } catch (err) {
+      console.error("Error uploading proof image:", err);
+      setError(err.message || "Lỗi khi upload hình ảnh chứng minh!");
+      setProofImage(null);
+      setProofImagePreview(null);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setProofImage(null);
+    setProofImagePreview(null);
   };
 
   // === GỬI THANH TOÁN ===
@@ -366,6 +456,12 @@ export default function Payment() {
       return;
     }
 
+    // Validate proof image
+    if (!proofImage) {
+      setError("Vui lòng upload hình ảnh chứng minh thanh toán!");
+      return;
+    }
+
     const token = localStorage.getItem("access_token");
     if (!token) {
       setError("Vui lòng đăng nhập!");
@@ -373,39 +469,60 @@ export default function Payment() {
       return;
     }
 
-    const paymentData = {
-      ho_ten: formData.ho_ten,
-      email: formData.email,
-      so_dien_thoai: formData.so_dien_thoai,
-      phuong_thuc_thanh_toan: paymentMethod,
-      ten_goi: title,
-      so_tien: parseFloat(price),
-    };
-
     try {
       setLoading(true);
       setError("");
 
+      // Prepare payment data with proof image URL (if bank transfer)
+      const imageUrl = proofImage?.url;
+      console.log("Submitting payment with image URL:", imageUrl); // Debug log
+      
+      if (!imageUrl) {
+        setError("Không tìm thấy URL ảnh đã upload. Vui lòng upload lại!");
+        return;
+      }
+      
+      const paymentData = {
+        ho_ten: formData.ho_ten,
+        email: formData.email,
+        so_dien_thoai: formData.so_dien_thoai,
+        phuong_thuc_thanh_toan: paymentMethod,
+        ten_goi: title,
+        so_tien: parseFloat(price),
+        // Include proof image URL
+        hinh_anh_chung_minh: imageUrl,
+      };
+      
+      console.log("Payment data:", paymentData); // Debug log
+
+      // Get API URL from config
+      const { apiUrl } = getConfig();
+      // Add /api if not already in URL
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const response = await axios.post(
-        "https://course-an-ninh-mang-backend.vercel.app/api/payment",
+        `${baseApiUrl}/payment`,
         paymentData,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         }
       );
 
-      const data = response.data;
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const data = response.data.data || response.data;
 
-      // === MOMO: Redirect đến payUrl ===
-      if (data.payUrl) {
-        window.location.href = data.payUrl; // Tự động nhảy sang MoMo
-        return;
-      }
-
-      // === BANK_TRANSFER: Thành công ngay ===
-      if (data.payment_id && data.new_role) {
-        alert(`Thanh toán chuyển khoản thành công! Vai trò: ${data.new_role}`);
-        navigate(ENDPOINTS.USER.COURSES);
+      // === BANK_TRANSFER: Thành công, chờ admin duyệt ===
+      if (data.payment_id) {
+        toast.success(
+          `Yêu cầu thanh toán đã được tạo! Đang chờ admin duyệt. ID: ${data.payment_id}`,
+          {
+            position: "top-right",
+            autoClose: 5000,
+          }
+        );
+        navigate(ENDPOINTS.USER.DASHBOARD);
         return;
       }
 
@@ -419,36 +536,6 @@ export default function Payment() {
     }
   };
 
-  // === TRANG XÁC NHẬN SAU KHI MOMO REDIRECT VỀ ===
-  if (isReturnSuccess) {
-    return (
-      <div className="min-h-screen bg-lozo-gradient flex flex-col items-center justify-center p-8">
-        <Header />
-        <div className="text-center space-y-6 max-w-md">
-          <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mx-auto animate-pulse">
-            <Check className="h-12 w-12 text-green-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-white">
-            Thanh toán thành công!
-          </h2>
-          <p className="text-[#d1d5db]">
-            Gói học đã được kích hoạt. Đang chuyển về trang khóa học...
-          </p>
-          <div className="flex justify-center space-x-2">
-            <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce"></div>
-            <div
-              className="w-3 h-3 bg-green-400 rounded-full animate-bounce"
-              style={{ animationDelay: "0.1s" }}
-            ></div>
-            <div
-              className="w-3 h-3 bg-green-400 rounded-full animate-bounce"
-              style={{ animationDelay: "0.2s" }}
-            ></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // === TRANG THANH TOÁN CHÍNH ===
   return (
@@ -475,6 +562,32 @@ export default function Payment() {
         {error && (
           <div className="mb-6 rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-red-400">
             {error}
+          </div>
+        )}
+
+        {/* Thông báo thanh toán đang chờ duyệt */}
+        {!checkingPayment && pendingPayment && (
+          <div className="mb-6 p-4 bg-yellow-500/20 border border-yellow-500/40 rounded-xl">
+            <div className="flex items-start gap-3">
+              <Shield className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-yellow-400 font-semibold mb-1">
+                  Bạn có một yêu cầu thanh toán đang chờ duyệt
+                </h3>
+                <p className="text-yellow-300/80 text-sm mb-2">
+                  Gói: <span className="font-medium">{pendingPayment.ten_goi}</span> - 
+                  Số tiền: <span className="font-medium">
+                    {new Intl.NumberFormat("vi-VN", {
+                      style: "currency",
+                      currency: "VND",
+                    }).format(pendingPayment.so_tien)}
+                  </span>
+                </p>
+                <p className="text-yellow-300/60 text-xs">
+                  Vui lòng chờ admin duyệt thanh toán trước khi tạo yêu cầu mới.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -512,36 +625,72 @@ export default function Payment() {
               </div>
             </div>
 
-            {/* Phương thức */}
+            {/* Phương thức thanh toán - Chỉ chuyển khoản ngân hàng */}
             <div className="rounded-2xl border border-[#4b2d68] bg-gradient-to-r from-[#371658] to-[#43166f] p-6">
               <h2 className="text-xl font-bold text-white mb-4">
                 Phương thức thanh toán
               </h2>
-              <div className="space-y-3">
-                <button
-                  onClick={() => setPaymentMethod("momo")}
-                  className={`flex items-center w-full gap-3 rounded-lg px-4 py-3 transition-all ${
-                    paymentMethod === "momo"
-                      ? "bg-lozo-button text-white"
-                      : "bg-[#4b2d68] text-[#d1d5db]"
-                  }`}
-                >
-                  <Smartphone className="h-5 w-5" />
-                  <span>Thanh toán qua MoMo</span>
-                </button>
-                <button
-                  onClick={() => setPaymentMethod("bank_transfer")}
-                  className={`flex items-center w-full gap-3 rounded-lg px-4 py-3 transition-all ${
-                    paymentMethod === "bank_transfer"
-                      ? "bg-lozo-button text-white"
-                      : "bg-[#4b2d68] text-[#d1d5db]"
-                  }`}
-                >
-                  <Building2 className="h-5 w-5" />
-                  <span>Chuyển khoản ngân hàng</span>
-                </button>
+              <div className="flex items-center gap-3 rounded-lg px-4 py-3 bg-lozo-button text-white">
+                <Building2 className="h-5 w-5" />
+                <span>Chuyển khoản ngân hàng</span>
               </div>
             </div>
+
+            {/* Upload proof image */}
+            <div className="rounded-2xl border border-[#4b2d68] bg-gradient-to-r from-[#371658] to-[#43166f] p-6">
+                <h2 className="text-xl font-bold text-white mb-4">
+                  Hình ảnh chứng minh thanh toán
+                </h2>
+                <div className="space-y-4">
+                  {proofImagePreview ? (
+                    <div className="relative">
+                      <img
+                        src={proofImagePreview}
+                        alt="Proof preview"
+                        className="w-full h-48 object-cover rounded-lg border border-[#4b2d68]"
+                      />
+                      <button
+                        onClick={handleRemoveImage}
+                        className="absolute top-2 right-2 p-2 bg-red-500/80 hover:bg-red-500 rounded-full text-white transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-[#4b2d68] rounded-lg cursor-pointer hover:border-lozo-button transition-colors bg-[#4b2d68]/30">
+                      {uploadingImage ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="h-8 w-8 animate-spin text-lozo-button" />
+                          <span className="text-[#d1d5db]">Đang upload...</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <Upload className="h-8 w-8 text-[#d1d5db]" />
+                          <span className="text-[#d1d5db]">
+                            Click để chọn hình ảnh
+                          </span>
+                          <span className="text-sm text-[#9ca3af]">
+                            (JPG, PNG, tối đa 5MB)
+                          </span>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                        disabled={uploadingImage}
+                      />
+                    </label>
+                  )}
+                  {proofImage && (
+                    <div className="flex items-center gap-2 text-sm text-green-400">
+                      <ImageIcon className="h-4 w-4" />
+                      <span>Đã upload thành công</span>
+                    </div>
+                  )}
+                </div>
+              </div>
           </div>
 
           {/* RIGHT: Summary */}
@@ -550,6 +699,23 @@ export default function Payment() {
               <h2 className="text-xl font-bold text-white mb-4">
                 Thông tin đơn hàng
               </h2>
+
+              {/* QR Code */}
+              <div className="rounded-xl bg-white p-4 mb-6 flex flex-col items-center">
+                <p className="text-gray-700 text-sm font-medium mb-3 text-center">
+                  Quét mã QR để thanh toán
+                </p>
+                <img
+                  src="/qr.jpeg"
+                  alt="QR Code thanh toán"
+                  className="w-full max-w-[250px] h-auto rounded-lg"
+                />
+                <p className="text-gray-500 text-xs mt-3 text-center">
+                  Chủ tài khoản: PHAM MINH NHAT
+                  <br />
+                  STK: 0001128325462
+                </p>
+              </div>
 
               <div className="rounded-xl bg-[#4d226f] p-4 mb-6">
                 <div className="flex items-center gap-3 mb-3">
@@ -590,9 +756,9 @@ export default function Payment() {
 
               <button
                 onClick={handlePayment}
-                disabled={loading}
+                disabled={loading || uploadingImage || !!pendingPayment}
                 className={`w-full mt-6 rounded-xl py-3 font-medium transition-all flex items-center justify-center gap-2 ${
-                  loading
+                  loading || uploadingImage || pendingPayment
                     ? "bg-lozo-button/50 cursor-not-allowed"
                     : "bg-lozo-button hover:opacity-90"
                 } text-white`}
@@ -602,10 +768,17 @@ export default function Payment() {
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Đang xử lý...
                   </>
+                ) : pendingPayment ? (
+                  "Đang chờ duyệt thanh toán trước"
                 ) : (
                   "Xác nhận thanh toán"
                 )}
               </button>
+              {pendingPayment && (
+                <p className="text-yellow-400 text-xs text-center mt-2">
+                  Vui lòng chờ admin duyệt thanh toán hiện tại trước khi tạo yêu cầu mới
+                </p>
+              )}
             </div>
           </div>
         </div>

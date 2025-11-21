@@ -185,7 +185,9 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import axios from "axios";
+import { toast } from "react-toastify";
 import { useNavigate, Link } from "react-router-dom";
+import { getConfig } from "../../../../configs/getConfig.config";
 import { ENDPOINTS } from "../../../../routes/endPoints";
 import CourseTemplate from "../../../../assets/CourseTemplate.pdf";
 
@@ -226,8 +228,10 @@ export default function Sidebar({
       const formData = new FormData();
       formData.append("file", file);
 
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const response = await axios.post(
-        "https://course-an-ninh-mang-backend.vercel.app/api/courses/upload",
+        `${baseApiUrl}/courses/upload`,
         formData,
         {
           headers: {
@@ -237,8 +241,14 @@ export default function Sidebar({
         }
       );
       setLoading(false);
-      alert(
-        `Tải file thành công! Khóa học được tạo: ${response.data.course.title}`
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const uploadData = response.data.data || response.data;
+      toast.success(
+        `Tải file thành công! Khóa học được tạo: ${uploadData.course?.title || "N/A"}`,
+        {
+          position: "top-right",
+          autoClose: 5000,
+        }
       );
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi khi tải file Word");

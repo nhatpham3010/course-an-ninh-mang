@@ -417,8 +417,10 @@
 // export default CTF;
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { toast } from "react-toastify";
 import { Link } from "react-router-dom";
 import { ENDPOINTS } from "../../../routes/endPoints";
+import { getConfig } from "../../../configs/getConfig.config";
 import {
   Shield,
   Users,
@@ -440,6 +442,7 @@ import {
   PlusCircle,
   X,
   FileUp,
+  CreditCard,
 } from "lucide-react";
 
 const CTF = () => {
@@ -481,8 +484,10 @@ const CTF = () => {
       if (difficulty) params.difficulty = difficulty;
       if (status) params.status = status;
 
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const response = await axios.get(
-        "https://course-an-ninh-mang-backend.vercel.app/api/courses/ctf",
+        `${baseApiUrl}/ctf`,
         {
           params,
           headers: {
@@ -490,7 +495,9 @@ const CTF = () => {
           },
         }
       );
-      setCtfData(response.data);
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const ctfData = response.data.data || response.data;
+      setCtfData(ctfData);
     } catch (err) {
       console.error("Error fetching CTF data:", err);
       if (err.response?.status === 401) {
@@ -524,7 +531,10 @@ const CTF = () => {
 
     // kiểm tra type pdf (optional)
     if (file.type !== "application/pdf") {
-      alert("Vui lòng chọn file PDF hợp lệ!");
+      toast.error("Vui lòng chọn file PDF hợp lệ!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       return;
     }
 
@@ -533,16 +543,18 @@ const CTF = () => {
 
       // encode filename giống hàm bạn đưa
       const filename = encodeURIComponent(file.name);
-      const backendURL =
-        "https://course-an-ninh-mang-backend.vercel.app/api/upload/presign";
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+      const backendURL = `${baseApiUrl}/upload/presign`;
 
       // Lấy presigned URL từ backend (GET ?filename=...)
       const res = await axios.get(`${backendURL}?filename=${filename}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // backend trả { url } theo ví dụ của bạn
-      const { url } = res.data;
+      // Backend trả về: { error_code: 0, message: "Success", data: { url: ... } }
+      const presignData = res.data.data || res.data;
+      const { url } = presignData;
       if (!url) throw new Error("Không nhận được presigned URL từ backend");
 
       // PUT file lên presigned URL
@@ -554,10 +566,16 @@ const CTF = () => {
       const fileUrl = url.split("?")[0];
       setNewCTF((prev) => ({ ...prev, pdf_url: fileUrl }));
 
-      alert("✅ Upload PDF thành công!");
+      toast.success("✅ Upload PDF thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error("Upload lỗi:", error);
-      alert("❌ Upload PDF thất bại!");
+      toast.error("❌ Upload PDF thất bại!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
     } finally {
       setPopupUploading(false);
     }
@@ -570,16 +588,22 @@ const CTF = () => {
 
     // validate giống backend: ten, loaictf, tacgia, choai là bắt buộc
     if (!ten || !loaictf || !tacgia || !choai) {
-      alert(
-        "⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề (choai)!"
+      toast.warning(
+        "⚠️ Vui lòng nhập đầy đủ Tên, Loại CTF, Tác giả và Chủ đề (choai)!",
+        {
+          position: "top-right",
+          autoClose: 3000,
+        }
       );
       return;
     }
 
     try {
       // Gửi về endpoint tạo CTF của backend - sử dụng cùng base với GET list
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const res = await axios.post(
-        "https://course-an-ninh-mang-backend.vercel.app/api/courses/ctf",
+        `${baseApiUrl}/ctf`,
         {
           ten,
           mota: mota || null,
@@ -599,7 +623,10 @@ const CTF = () => {
       );
 
       // thành công
-      alert("✅ Tạo CTF thành công!");
+      toast.success("✅ Tạo CTF thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       setShowPopup(false);
       // reset form
       setNewCTF({
@@ -618,7 +645,10 @@ const CTF = () => {
       console.error("Lỗi khi tạo CTF:", err);
       const message =
         err?.response?.data?.error || "Không thể tạo CTF, vui lòng thử lại!";
-      alert(`❌ ${message}`);
+      toast.error(`❌ ${message}`, {
+        position: "top-right",
+        autoClose: 3000,
+      });
     }
   };
 
@@ -694,6 +724,13 @@ const CTF = () => {
             >
               <Users className="w-4 h-4" />
               <span>Dashboard</span>
+            </Link>
+            <Link
+              to={ENDPOINTS.USER.ADMINPAYMENT}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Quản lý thanh toán</span>
             </Link>
             <button className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors">
               <Bell className="w-4 h-4" />

@@ -273,6 +273,7 @@
 // }
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import { ENDPOINTS } from "../../../routes/endPoints";
 import { useAuth } from "../../../hooks/useAuth";
 import axios from "axios";
@@ -289,7 +290,10 @@ export default function Login() {
     e.preventDefault();
 
     if (!email || !password) {
-      alert("⚠️ Vui lòng nhập đầy đủ thông tin.");
+      toast.error("⚠️ Vui lòng nhập đầy đủ thông tin.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       return;
     }
 

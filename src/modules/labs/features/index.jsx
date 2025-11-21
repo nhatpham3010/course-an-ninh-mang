@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 import {
   Shield,
   Users,
@@ -39,16 +40,20 @@ const Labs = () => {
   useEffect(() => {
     const fetchLabs = async () => {
       try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const res = await axios.get(
-          "https://course-an-ninh-mang-backend.vercel.app/api/courses/lab",
+          `${baseApiUrl}/labs`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           }
         );
-        setData(res.data);
-        setFilteredLabs(res.data.labs || []);
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const labData = res.data.data || res.data;
+        setData(labData);
+        setFilteredLabs(labData.labs || []);
       } catch (error) {
         console.error("Lỗi khi tải dữ liệu Labs:", error);
       } finally {
@@ -196,7 +201,7 @@ const Labs = () => {
 
         {/* Lab Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredLabs.map((lab) => {
+          {filteredLabs.map((lab, index) => {
             const Icon = iconMap[lab.icon] || Shield;
             const progress = parseInt(lab.progress) || 0;
             const isCompleted = lab.status === "completed";
@@ -204,7 +209,7 @@ const Labs = () => {
 
             return (
               <div
-                key={lab.id}
+                key={`lab-${lab.id || index}-${lab.title || index}`}
                 className="p-6 rounded-xl border border-gray-600/50 bg-gray-900/30 backdrop-blur-sm"
               >
                 <div className="flex items-start justify-between mb-4">
@@ -279,7 +284,7 @@ const Labs = () => {
               const Icon = iconMap[ach.icon] || Award;
               return (
                 <div
-                  key={i}
+                  key={`achievement-${ach.id || i}-${ach.title || i}`}
                   className="p-6 rounded-xl border border-lozo-primary/20 bg-gray-900/50 text-center"
                 >
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-lozo-primary to-lozo-secondary flex items-center justify-center">

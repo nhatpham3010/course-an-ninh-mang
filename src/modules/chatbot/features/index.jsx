@@ -2,6 +2,7 @@ import { Shield, Send, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 import { ENDPOINTS } from "../../../routes/endPoints";
 
 // ======= Component hiển thị từng chủ đề =======
@@ -259,16 +260,22 @@ export default function ChatBot() {
 
   // 🔹 Lấy danh sách chủ đề
   useEffect(() => {
+    const { apiUrl } = getConfig();
+    const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
     axios
       .get(
-        `https://course-an-ninh-mang-backend.vercel.app/api/chatbot/topics`,
+        `${baseApiUrl}/chatbot/topics`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       )
-      .then((res) => setTopics(res.data || []));
+      .then((res) => {
+        // Backend trả về: { error_code: 0, message: "Success", data: [...] }
+        const topicsData = res.data.data || res.data;
+        setTopics(Array.isArray(topicsData) ? topicsData : []);
+      });
   }, []);
 
   // 🔹 Khi chọn chủ đề → lấy câu hỏi
@@ -276,8 +283,10 @@ export default function ChatBot() {
     const topic = topics.find((t) => t.id === topicId);
     setCurrentTopic(topic);
 
+    const { apiUrl } = getConfig();
+    const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
     const res = await axios.get(
-      `https://course-an-ninh-mang-backend.vercel.app/api/chatbot/topics/${topicId}/qa`,
+      `${baseApiUrl}/chatbot/topics/${topicId}/qa`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -285,7 +294,9 @@ export default function ChatBot() {
       }
     );
 
-    const qaMessages = res.data
+    // Backend trả về: { error_code: 0, message: "Success", data: [...] }
+    const qaData = res.data.data || res.data;
+    const qaMessages = (Array.isArray(qaData) ? qaData : [])
       .map((qa) => [
         { role: "user", content: qa.cauhoi },
         { role: "assistant", content: qa.cautraloi },
@@ -304,8 +315,10 @@ export default function ChatBot() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const res = await axios.post(
-        "https://course-an-ninh-mang-backend.vercel.app/api/chatbot/chat",
+        `${baseApiUrl}/chatbot/chat`,
         {
           topicId,
           messages: [userMsg],
@@ -318,9 +331,11 @@ export default function ChatBot() {
         }
       );
 
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const chatData = res.data.data || res.data;
       const botReply = {
         role: "assistant",
-        content: res.data.choices[0].message.content,
+        content: chatData.choices?.[0]?.message?.content || chatData.content || "Không có phản hồi",
       };
       setMessages((prev) => [...prev, botReply]);
     } catch (err) {

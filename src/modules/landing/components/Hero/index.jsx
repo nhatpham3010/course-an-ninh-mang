@@ -1,10 +1,46 @@
 // import { Button } from "../../components/ui/button";
+import { useEffect, useState } from "react";
+import axios from "axios";
 import Button from "@mui/material/Button";
-import { ArrowRight, Play, Shield, Code, Lock } from "lucide-react";
+import { ArrowRight, Play, Shield, Code, Lock, Award } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ENDPOINTS } from "../../../../routes/endPoints";
+import { getConfig } from "../../../../configs/getConfig.config";
 
 export default function Hero() {
+  const [userInfo, setUserInfo] = useState(null);
+  const [checking, setChecking] = useState(true);
+  const token = localStorage.getItem("access_token");
+
+  useEffect(() => {
+    const checkUserPackage = async () => {
+      if (!token) {
+        setChecking(false);
+        return;
+      }
+
+      try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+        const response = await axios.get(
+          `${baseApiUrl}/user`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        const dashboardData = response.data.data || response.data;
+        setUserInfo(dashboardData.userInfo);
+      } catch (error) {
+        console.error("Lỗi khi kiểm tra gói học:", error);
+      } finally {
+        setChecking(false);
+      }
+    };
+
+    checkUserPackage();
+  }, [token]);
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background gradient */}
@@ -60,15 +96,28 @@ export default function Hero() {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              to={ENDPOINTS.AUTH.LOGIN}
-              className="flex items-center justify-center"
-            >
-              <Button className="w-52 h-12 bg-gradient-to-r from-[#5C065E] to-brand-secondary hover:from-[#5C065E]/90 hover:to-brand-secondary/90 !text-white px-8 py-4 text-lg font-semibold shadow-xl shadow-black/20 group">
-                Bắt đầu học ngay
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
+            {token && !checking && !userInfo?.currentPackage ? (
+              <Link
+                to={ENDPOINTS.USER.PACKAGES}
+                className="flex items-center justify-center"
+              >
+                <Button className="w-52 h-12 bg-gradient-to-r from-[#5C065E] to-brand-secondary hover:from-[#5C065E]/90 hover:to-brand-secondary/90 !text-white px-8 py-4 text-lg font-semibold shadow-xl shadow-black/20 group">
+                  <Award className="mr-2 h-5 w-5" />
+                  Nâng cấp ngay
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </Link>
+            ) : (
+              <Link
+                to={ENDPOINTS.AUTH.LOGIN}
+                className="flex items-center justify-center"
+              >
+                <Button className="w-52 h-12 bg-gradient-to-r from-[#5C065E] to-brand-secondary hover:from-[#5C065E]/90 hover:to-brand-secondary/90 !text-white px-8 py-4 text-lg font-semibold shadow-xl shadow-black/20 group">
+                  Bắt đầu học ngay
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </Link>
+            )}
             <Link
               to={ENDPOINTS.USER.DEMO}
               className="flex items-center justify-center"

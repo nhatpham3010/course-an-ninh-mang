@@ -143,10 +143,11 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
+import { getConfig } from "../../../configs/getConfig.config";
 import DashboardHeader from "../components/DashboardHeader";
 import CourseCard from "../components/CourseCard";
 import { ENDPOINTS } from "../../../routes/endPoints";
-import { Shield, Users, Bell, LogOut } from "lucide-react";
+import { Shield, Users, Bell, LogOut, CreditCard } from "lucide-react";
 
 export default function Index() {
   const [data, setData] = useState({ sidebar: {}, courses: [] });
@@ -162,8 +163,10 @@ export default function Index() {
           throw new Error("Vui lòng đăng nhập");
         }
 
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const response = await axios.get(
-          "https://course-an-ninh-mang-backend.vercel.app/api/courses/management",
+          `${baseApiUrl}/courses/management`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -171,7 +174,9 @@ export default function Index() {
           }
         );
 
-        setData(response.data);
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const managementData = response.data.data || response.data;
+        setData(managementData);
         setLoading(false);
       } catch (err) {
         setError(err.response?.data?.message || "Lỗi khi tải dữ liệu khóa học");
@@ -229,6 +234,13 @@ export default function Index() {
             >
               <Users className="w-4 h-4" />
               <span>Dashboard</span>
+            </Link>
+            <Link
+              to={ENDPOINTS.USER.ADMINPAYMENT}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Quản lý thanh toán</span>
             </Link>
             <button className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors">
               <Bell className="w-4 h-4" />

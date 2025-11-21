@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { toast } from "react-toastify";
 import { ENDPOINTS } from "../../../routes/endPoints";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 import {
   Shield,
   Users,
@@ -20,6 +22,7 @@ import {
   PlusCircle,
   X,
   Bell,
+  CreditCard,
 } from "lucide-react";
 
 const iconMap = {
@@ -53,14 +56,18 @@ const Labs = () => {
   useEffect(() => {
     const fetchLabs = async () => {
       try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const res = await axios.get(
-          "https://course-an-ninh-mang-backend.vercel.app/api/courses/lab",
+          `${baseApiUrl}/labs`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
-        setData(res.data);
-        setFilteredLabs(res.data.labs || []);
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const labData = res.data.data || res.data;
+        setData(labData);
+        setFilteredLabs(labData.labs || []);
       } catch (error) {
         console.error("Lỗi khi tải dữ liệu Labs:", error);
       } finally {
@@ -90,12 +97,15 @@ const Labs = () => {
     try {
       setPopupUploading(true);
       const filename = encodeURIComponent(file.name);
-      const backendURL =
-        "https://course-an-ninh-mang-backend.vercel.app/api/upload/presign";
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+      const backendURL = `${baseApiUrl}/upload/presign`;
       const res = await axios.get(`${backendURL}?filename=${filename}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const { url } = res.data;
+      // Backend trả về: { error_code: 0, message: "Success", data: { url: ... } }
+      const presignData = res.data.data || res.data;
+      const { url } = presignData;
 
       await axios.put(url, file, {
         headers: { "Content-Type": "application/pdf" },
@@ -104,10 +114,16 @@ const Labs = () => {
       const fileUrl = url.split("?")[0];
       setPopupUploadedUrl(fileUrl);
       setPopupFile(file);
-      alert("✅ Upload PDF thành công!");
+      toast.success("✅ Upload PDF thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
     } catch (error) {
       console.error("Upload lỗi:", error);
-      alert("❌ Upload PDF thất bại!");
+      toast.error("❌ Upload PDF thất bại!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
     } finally {
       setPopupUploading(false);
     }
@@ -115,8 +131,13 @@ const Labs = () => {
 
   // 🧩 Gửi yêu cầu tạo Lab mới
   const handleCreateLab = async () => {
-    if (!popupTen || !popupLoai)
-      return alert("⚠️ Vui lòng nhập đầy đủ Tên và Loại lab!");
+    if (!popupTen || !popupLoai) {
+      toast.warning("⚠️ Vui lòng nhập đầy đủ Tên và Loại lab!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
 
     try {
       const payload = {
@@ -125,22 +146,32 @@ const Labs = () => {
         mota: popupMota || null,
         pdf_url: popupUploadedUrl || null,
       };
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const res = await axios.post(
-        "https://course-an-ninh-mang-backend.vercel.app/api/courses/lab",
+        `${baseApiUrl}/labs`,
         payload,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      alert("✅ Tạo lab thành công!");
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const newLabData = res.data.data || res.data;
+      toast.success("✅ Tạo lab thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       setShowPopup(false);
       setData((prev) => ({
         ...prev,
-        labs: [...(prev?.labs || []), res.data],
+        labs: [...(prev?.labs || []), newLabData],
       }));
     } catch (error) {
       console.error("Lỗi khi tạo lab:", error);
-      alert("❌ Tạo lab thất bại!");
+      toast.error("❌ Tạo lab thất bại!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
     }
   };
 
@@ -187,6 +218,13 @@ const Labs = () => {
             >
               <Users className="w-4 h-4" />
               <span>Dashboard</span>
+            </Link>
+            <Link
+              to={ENDPOINTS.USER.ADMINPAYMENT}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Quản lý thanh toán</span>
             </Link>
             <button className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors">
               <Bell className="w-4 h-4" />

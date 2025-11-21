@@ -2,10 +2,25 @@ import { Link, useNavigate } from "react-router-dom";
 import { ENDPOINTS } from "@/routes/endPoints";
 import AIchat from "../../assets/icons/Group.png";
 import { Users, LogOut } from "lucide-react";
+import { useAuth } from "../../hooks/useAuth";
 export default function Header() {
   const navigate = useNavigate();
-  const username = JSON.parse(localStorage.getItem("user")).name;
-  const handleLogout = () => {
+  const { logout } = useAuth();
+  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const username = user?.name || "Guest";
+  const isAuthenticated = !!localStorage.getItem("access_token");
+  
+  const handleLogout = async () => {
+    // Xóa token và user khỏi localStorage
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("roleToEdit");
+    
+    // Gọi logout từ useAuth nếu có
+    if (logout) {
+      await logout();
+    }
+    
     navigate("/");
   };
   const menuItems = [
@@ -66,25 +81,40 @@ export default function Header() {
 
           {/* User Actions */}
           <div className="flex items-center gap-4">
-            <Link
-              to={ENDPOINTS.USER.DASHBOARD}
-              className="flex items-center gap-2 text-white/80 hover:text-white font-bold text-sm px-4 py-2 rounded-md transition-colors"
-            >
-              <Users className="w-4 h-4" />
-              Dashboard
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <Link
+                  to={ENDPOINTS.USER.DASHBOARD}
+                  className="flex items-center gap-2 text-white/80 hover:text-white font-bold text-sm px-4 py-2 rounded-md transition-colors"
+                >
+                  <Users className="w-4 h-4" />
+                  Dashboard
+                </Link>
 
-            <div className="text-white/80 font-bold text-sm">
-              Xin chào, {username}
-            </div>
+                <Link
+                  to={ENDPOINTS.USER.PROFILE}
+                  className="text-white/80 hover:text-white font-bold text-sm px-4 py-2 rounded-md transition-colors cursor-pointer"
+                >
+                  Xin chào, {username}
+                </Link>
 
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-white/80 hover:text-white font-bold text-sm px-4 py-2 rounded-md transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Đăng xuất
-            </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 text-white/80 hover:text-white font-bold text-sm px-4 py-2 rounded-md transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Đăng xuất
+                </button>
+              </>
+            ) : (
+              <Link
+                to={ENDPOINTS.AUTH.LOGIN}
+                className="flex items-center gap-2 text-white/80 hover:text-white font-bold text-sm px-4 py-2 rounded-md transition-colors bg-lozo-button/20 hover:bg-lozo-button/30"
+              >
+                <Users className="w-4 h-4" />
+                Đăng nhập
+              </Link>
+            )}
           </div>
         </div>
       </div>

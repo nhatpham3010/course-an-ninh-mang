@@ -16,7 +16,8 @@ export function createRequestInterceptor() {
   return function interceptor(config) {
     const { apiUrl } = getConfig();
 
-    config.baseURL = apiUrl;
+    // Add /api to baseURL if not already present
+    config.baseURL = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
 
     const baseConfig = {
       ...config,
@@ -43,7 +44,9 @@ export function createRequestInterceptor() {
 function parseResultsHandler(response) {
   const { data } = response || {};
   console.log("Response data:", data);
-  return data?.result || data;
+  // Backend trả về format: { error_code: 0, message: "Success", data: {...} }
+  // Trả về data.data nếu có, hoặc data nếu không có (fallback)
+  return data?.data !== undefined ? data.data : data;
 }
 
 const isResponseError = ({ response }) => {

@@ -1,18 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
-import axios from "axios"; // Giả sử bạn dùng Axios; nếu dùng fetch, thay thế bằng fetch
+import axios from "axios";
+import { getConfig } from "../configs/getConfig.config";
 
-// Base URL cho API (có thể config từ env: process.env.REACT_APP_API_URL)
-const API_BASE_URL = "https://course-an-ninh-mang-backend.vercel.app/api"; // Thay bằng URL backend của bạn
+// Get API URL from config
+const getApiBaseUrl = () => {
+  const { apiUrl } = getConfig();
+  return apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
+};
 
-// Instance Axios với config chung (thêm auth nếu cần, ví dụ: Bearer token)
-const token = localStorage.getItem("access_token");
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-});
+// Create axios instance with dynamic baseURL
+const createApiInstance = () => {
+  const token = localStorage.getItem("access_token");
+  return axios.create({
+    baseURL: getApiBaseUrl(),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+};
 
 // Hook chính
 export const useCourseData = (courseId, lessonId) => {
@@ -26,10 +32,13 @@ export const useCourseData = (courseId, lessonId) => {
   const fetchLessonById = useCallback(async (lessonId) => {
     try {
       setLoading(true);
+      const api = createApiInstance();
       const lessonResponse = await api.get(`/courses/${lessonId}/content`);
-      setLessonData(lessonResponse.data);
+      // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+      const lessonData = lessonResponse.data.data || lessonResponse.data;
+      setLessonData(lessonData);
       setSelectedLessonId(lessonId);
-      console.log("📗 Lesson Data:", lessonResponse.data);
+      console.log("📗 Lesson Data:", lessonData);
     } catch (err) {
       console.error("❌ Lỗi khi tải bài học:", err);
       setError(err.response?.data?.message || "Không thể tải nội dung bài học");
@@ -51,9 +60,10 @@ export const useCourseData = (courseId, lessonId) => {
       try {
         setLoading(true);
         setError(null);
-
+        const api = createApiInstance();
         const courseResponse = await api.get(`/courses/${courseId}`);
-        const course = courseResponse.data;
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const course = courseResponse.data.data || courseResponse.data;
         setCourseData(course);
         console.log("📘 Course Data:", course);
 

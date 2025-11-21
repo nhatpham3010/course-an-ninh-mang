@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import { ENDPOINTS } from "../../../routes/endPoints";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 export default function Signin() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -15,13 +17,18 @@ export default function Signin() {
     e.preventDefault();
 
     if (password !== passwordAgain) {
-      alert("❌ Mật khẩu không khớp!");
+      toast.error("❌ Mật khẩu không khớp!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       return;
     }
 
     try {
+      const { apiUrl } = getConfig();
+      const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       const res = await axios.post(
-        "https://course-an-ninh-mang-backend.vercel.app/api/auth/register",
+        `${baseApiUrl}/auth/register`,
         {
           ten: name,
           email,
@@ -31,15 +38,24 @@ export default function Signin() {
       );
 
       if (res.status === 201) {
-        alert("✅ Đăng ký thành công!");
+        toast.success("✅ Đăng ký thành công!", {
+          position: "top-right",
+          autoClose: 3000,
+        });
         navigate(ENDPOINTS.AUTH.SIGNIN_SUCCESS, { state: { email } });
       }
     } catch (err) {
       console.error(err);
       if (err.response?.data?.message) {
-        alert(`⚠️ ${err.response.data.message}`);
+        toast.error(`⚠️ ${err.response.data.message}`, {
+          position: "top-right",
+          autoClose: 3000,
+        });
       } else {
-        alert("⚠️ Lỗi kết nối server!");
+        toast.error("⚠️ Lỗi kết nối server!", {
+          position: "top-right",
+          autoClose: 3000,
+        });
       }
     }
   };

@@ -50,6 +50,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { getConfig } from "../../../configs/getConfig.config";
 export default function PaymentReturn() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -88,8 +89,10 @@ export default function PaymentReturn() {
 
       // 6. Nếu resultCode = 0, gọi API backend để XÁC THỰC
       try {
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const response = await axios.post(
-          "https://course-an-ninh-mang-backend.vercel.app/api/payment/confirm",
+          `${baseApiUrl}/payment/confirm`,
           {
             orderId,
             requestId,
@@ -100,8 +103,10 @@ export default function PaymentReturn() {
         );
 
         // 7. Backend xác nhận THÀNH CÔNG
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const confirmData = response.data.data || response.data;
         setStatus("success");
-        setMessage(response.data.message || "Thanh toán thành công!");
+        setMessage(response.data.message || confirmData.message || "Thanh toán thành công!");
 
         // (Quan trọng) Chỗ này bạn nên cập nhật lại thông tin user (ví dụ: role mới)
         // bằng cách gọi hàm refetch context/redux của bạn

@@ -13,6 +13,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true,
+    host: true, // Cho phép truy cập từ bên ngoài
+    open: false,
   },
 });

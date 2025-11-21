@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { ENDPOINTS } from "../../../routes/endPoints";
+import { getConfig } from "../../../configs/getConfig.config";
 import {
   Users,
   BookOpen,
@@ -19,6 +20,7 @@ import {
   Shield,
   Download,
   Activity,
+  CreditCard,
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -36,15 +38,18 @@ export default function AdminDashboard() {
     const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem("access_token");
+        const { apiUrl } = getConfig();
+        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
         const response = await axios.get(
-          "https://course-an-ninh-mang-backend.vercel.app/api/user/admindashboard",
+          `${baseApiUrl}/user/admindashboard`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           }
         );
-        const data = response.data;
+        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
+        const data = response.data.data || response.data;
 
         setStats(data.stats || []);
         setSystemMetrics(data.systemmetrics || data.systemMetrics || []);
@@ -168,6 +173,13 @@ export default function AdminDashboard() {
             >
               <Users className="w-4 h-4" />
               <span>Dashboard</span>
+            </Link>
+            <Link
+              to={ENDPOINTS.USER.ADMINPAYMENT}
+              className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Quản lý thanh toán</span>
             </Link>
             <button className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors">
               <Bell className="w-4 h-4" />
