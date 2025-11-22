@@ -527,14 +527,8 @@ export default function Payment() {
 
       // === BANK_TRANSFER: Thành công, chờ admin duyệt ===
       if (data.payment_id) {
-        toast.success(
-          `Yêu cầu thanh toán đã được tạo! Đang chờ admin duyệt. ID: ${data.payment_id}`,
-          {
-            position: "top-right",
-            autoClose: 5000,
-          }
-        );
-        navigate(ENDPOINTS.USER.DASHBOARD);
+        // Chuyển đến trang thành công
+        navigate(ENDPOINTS.USER.PAYMENTSUCCESS);
         return;
       }
 

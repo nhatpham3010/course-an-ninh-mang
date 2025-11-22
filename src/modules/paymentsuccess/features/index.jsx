@@ -1,172 +1,57 @@
-// import { useEffect } from "react";
-// import { useLocation, useNavigate } from "react-router-dom";
-
-// export default function PaymentReturn() {
-//   const location = useLocation();
-//   const navigate = useNavigate();
-
-//   useEffect(() => {
-//     const params = new URLSearchParams(location.search);
-//     const resultCode = params.get("resultCode");
-//     const message = decodeURIComponent(params.get("message") || "");
-//     const paymentId = params.get("paymentId");
-
-//     if (resultCode === "0") {
-//       // Thanh toán thành công
-//       setTimeout(() => {
-//         navigate("/user/courses"); // hoặc trang bạn muốn
-//       }, 3000);
-//     }
-//   }, [location, navigate]);
-
-//   const params = new URLSearchParams(location.search);
-//   const resultCode = params.get("resultCode");
-//   const message = decodeURIComponent(params.get("message") || "");
-
-//   return (
-//     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-//       {resultCode === "0" ? (
-//         <>
-//           <h1 className="text-2xl font-bold text-green-600 mb-2">
-//             ✅ Thanh toán thành công!
-//           </h1>
-//           <p className="text-gray-600 mb-6">{message}</p>
-//           <p className="text-gray-500 text-sm">
-//             Hệ thống sẽ tự động chuyển hướng sau vài giây...
-//           </p>
-//         </>
-//       ) : (
-//         <>
-//           <h1 className="text-2xl font-bold text-red-600 mb-2">
-//             ❌ Thanh toán thất bại
-//           </h1>
-//           <p className="text-gray-600 mb-6">{message}</p>
-//         </>
-//       )}
-//     </div>
-//   );
-// }
-
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import axios from "axios";
-import { getConfig } from "../../../configs/getConfig.config";
-export default function PaymentReturn() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const token = localStorage.getItem("access_token"); // Giả sử token lưu trong localStorage
+import { useNavigate } from "react-router-dom";
+import { ENDPOINTS } from "../../../routes/endPoints";
+import { CheckCircle, Home } from "lucide-react";
 
-  // 2. Thêm state để quản lý trạng thái
-  const [status, setStatus] = useState("processing"); // "processing", "success", "error"
-  const [message, setMessage] = useState(
-    "Đang xác thực giao dịch, vui lòng chờ..."
-  );
+export default function PaymentReturn() {
+  const navigate = useNavigate();
+  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
-    // 3. Lấy TẤT CẢ các tham số MoMo trả về
-    const params = new URLSearchParams(location.search);
-    const resultCode = params.get("resultCode");
-    const orderId = params.get("orderId");
-    const requestId = params.get("requestId");
-    const momoMessage = decodeURIComponent(params.get("message") || "");
+    // Đếm ngược và tự động chuyển về trang chính sau 3 giây
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          navigate(ENDPOINTS.INDEX);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-    const confirmTransaction = async () => {
-      // 4. Kiểm tra resultCode ngay lập tức
-      if (resultCode !== "0") {
-        setStatus("error");
-        setMessage(`Giao dịch thất bại: ${momoMessage}`);
-        // Tự động chuyển về trang mua gói sau 5s
-        setTimeout(() => navigate("/user/oops"), 5000); // 👈 Sửa thành trang mua gói của bạn
-        return;
-      }
+    return () => clearInterval(timer);
+  }, [navigate]);
 
-      // 5. Kiểm tra có đủ key để gọi backend không
-      if (!orderId || !requestId) {
-        setStatus("error");
-        setMessage("Lỗi: Không tìm thấy thông tin để xác thực giao dịch.");
-        return;
-      }
+  const handleGoHome = () => {
+    navigate(ENDPOINTS.INDEX);
+  };
 
-      // 6. Nếu resultCode = 0, gọi API backend để XÁC THỰC
-      try {
-        const { apiUrl } = getConfig();
-        const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
-        const response = await axios.post(
-          `${baseApiUrl}/payment/confirm`,
-          {
-            orderId,
-            requestId,
-          },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        // 7. Backend xác nhận THÀNH CÔNG
-        // Backend trả về: { error_code: 0, message: "Success", data: {...} }
-        const confirmData = response.data.data || response.data;
-        setStatus("success");
-        setMessage(response.data.message || confirmData.message || "Thanh toán thành công!");
-
-        // (Quan trọng) Chỗ này bạn nên cập nhật lại thông tin user (ví dụ: role mới)
-        // bằng cách gọi hàm refetch context/redux của bạn
-        // ví dụ: auth.refetchUser();
-
-        setTimeout(() => {
-          navigate("/user/courses"); // Chuyển về trang khóa học
-        }, 3000);
-      } catch (error) {
-        // 8. Backend báo LỖI (ví dụ: query MoMo lỗi, sai số tiền, v.v.)
-        setStatus("error");
-        const errorMsg =
-          error.response?.data?.message || "Lỗi không xác định từ server";
-        setMessage(`Lỗi xác thực thanh toán: ${errorMsg}`);
-        setTimeout(() => navigate("/user/oops"), 5000); // Về trang mua
-      }
-    };
-
-    confirmTransaction();
-
-    // Chỉ chạy 1 lần khi component mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Bỏ location, navigate để tránh gọi lại
-
-  // 9. Render UI dựa trên state
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      {/* TRẠNG THÁI ĐANG XỬ LÝ */}
-      {status === "processing" && (
-        <>
-          {/*  */}
-          <h1 className="text-2xl font-bold text-blue-600 mb-2">
-            🔄 Đang xử lý...
+    <div className="min-h-screen bg-lozo-gradient flex items-center justify-center px-4">
+      <div className="max-w-md w-full">
+        <div className="bg-gradient-to-r from-[#371658] to-[#43166f] rounded-2xl border border-[#4b2d68] p-8 text-center">
+          <div className="flex justify-center mb-6">
+            <div className="rounded-full bg-green-500 p-4">
+              <CheckCircle className="h-16 w-16 text-white" />
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-4">
+            Thành công, vui lòng chờ admin duyệt
           </h1>
-          <p className="text-gray-600 mb-6">{message}</p>
-        </>
-      )}
-
-      {/* TRẠNG THÁI THÀNH CÔNG (ĐÃ XÁC THỰC) */}
-      {status === "success" && (
-        <>
-          <h1 className="text-2xl font-bold text-green-600 mb-2">
-            ✅ Thanh toán thành công!
-          </h1>
-          <p className="text-gray-600 mb-6">{message}</p>
-          <p className="text-gray-500 text-sm">
-            Hệ thống sẽ tự động chuyển hướng sau vài giây...
+          <p className="text-[#d1d5db] mb-6">
+            Hệ thống sẽ tự động chuyển về trang chính sau{" "}
+            <span className="text-lozo-button font-bold text-xl">{countdown}</span> giây
           </p>
-        </>
-      )}
-
-      {/* TRẠNG THÁI LỖI (TỪ MOMO HOẶC TỪ BACKEND) */}
-      {status === "error" && (
-        <>
-          <h1 className="text-2xl font-bold text-red-600 mb-2">
-            ❌ Đã xảy ra lỗi
-          </h1>
-          <p className="text-gray-600 mb-6">{message}</p>
-        </>
-      )}
+          <button
+            onClick={handleGoHome}
+            className="w-full bg-lozo-button hover:opacity-90 text-white font-medium py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            <Home className="h-5 w-5" />
+            Về trang chính ngay
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
