@@ -31,12 +31,11 @@ const PaymentAdmin = () => {
   const [filteredPayments, setFilteredPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all"); // all, pending, completed, rejected
+  const [statusFilter, setStatusFilter] = useState("all"); // all, pending, completed
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [processingId, setProcessingId] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null); // 'approve' | 'reject'
   const [confirmPaymentId, setConfirmPaymentId] = useState(null);
   const token = localStorage.getItem("access_token");
   const username = JSON.parse(localStorage.getItem("user"))?.name || "Admin";
@@ -94,19 +93,12 @@ const PaymentAdmin = () => {
   };
 
   const showApproveConfirm = (paymentId) => {
-    setConfirmAction("approve");
-    setConfirmPaymentId(paymentId);
-    setShowConfirmModal(true);
-  };
-
-  const showRejectConfirm = (paymentId) => {
-    setConfirmAction("reject");
     setConfirmPaymentId(paymentId);
     setShowConfirmModal(true);
   };
 
   const handleConfirm = async () => {
-    if (!confirmPaymentId || !confirmAction) return;
+    if (!confirmPaymentId) return;
 
     try {
       setProcessingId(confirmPaymentId);
@@ -115,42 +107,31 @@ const PaymentAdmin = () => {
       const { apiUrl } = getConfig();
       const baseApiUrl = apiUrl.endsWith("/api") ? apiUrl : `${apiUrl}/api`;
       
-      if (confirmAction === "approve") {
-        await axios.put(`${baseApiUrl}/payment/${confirmPaymentId}/approve`, {}, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        toast.success("Duyệt thanh toán thành công!", {
-          position: "top-right",
-          autoClose: 3000,
-        });
-      } else {
-        await axios.put(`${baseApiUrl}/payment/${confirmPaymentId}/reject`, {}, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        toast.success("Từ chối thanh toán thành công!", {
-          position: "top-right",
-          autoClose: 3000,
-        });
-      }
+      await axios.put(`${baseApiUrl}/payment/${confirmPaymentId}/approve`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      toast.success("Duyệt thanh toán thành công!", {
+        position: "top-right",
+        autoClose: 3000,
+      });
       
       fetchPayments();
       setShowDetailModal(false);
     } catch (error) {
-      console.error(`Lỗi khi ${confirmAction === "approve" ? "duyệt" : "từ chối"} thanh toán:`, error);
+      console.error("Lỗi khi duyệt thanh toán:", error);
       toast.error(
-        error.response?.data?.message || `Không thể ${confirmAction === "approve" ? "duyệt" : "từ chối"} thanh toán!`,
+        error.response?.data?.message || "Không thể duyệt thanh toán!",
         { position: "top-right", autoClose: 3000 }
       );
     } finally {
       setProcessingId(null);
-      setConfirmAction(null);
       setConfirmPaymentId(null);
     }
   };
 
   const handleCancelConfirm = () => {
     setShowConfirmModal(false);
-    setConfirmAction(null);
     setConfirmPaymentId(null);
   };
 
@@ -220,7 +201,6 @@ const PaymentAdmin = () => {
     total: payments.length,
     pending: payments.filter((p) => p.trang_thai === "pending").length,
     completed: payments.filter((p) => p.trang_thai === "completed").length,
-    rejected: payments.filter((p) => p.trang_thai === "rejected").length,
   };
 
   if (loading) {
@@ -286,7 +266,7 @@ const PaymentAdmin = () => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-gray-800/60 border border-gray-600 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <CreditCard className="w-8 h-8 text-blue-400" />
@@ -310,14 +290,6 @@ const PaymentAdmin = () => {
             </div>
             <p className="text-3xl font-bold text-white">{stats.completed}</p>
             <p className="text-gray-400 text-sm mt-2">Đã duyệt</p>
-          </div>
-          <div className="bg-gray-800/60 border border-gray-600 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <XCircle className="w-8 h-8 text-red-400" />
-              <span className="text-red-400 text-sm font-medium">Từ chối</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{stats.rejected}</p>
-            <p className="text-gray-400 text-sm mt-2">Đã từ chối</p>
           </div>
         </div>
 
@@ -345,7 +317,6 @@ const PaymentAdmin = () => {
                   <option value="all">Tất cả</option>
                   <option value="pending">Chờ duyệt</option>
                   <option value="completed">Đã duyệt</option>
-                  <option value="rejected">Đã từ chối</option>
                 </select>
               </div>
             </div>
@@ -435,24 +406,14 @@ const PaymentAdmin = () => {
                             <Eye className="w-4 h-4" />
                           </button>
                           {payment.trang_thai === "pending" && (
-                            <>
-                              <button
-                                onClick={() => showApproveConfirm(payment.id)}
-                                disabled={processingId === payment.id}
-                                className="p-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Duyệt"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => showRejectConfirm(payment.id)}
-                                disabled={processingId === payment.id}
-                                className="p-2 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Từ chối"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            </>
+                            <button
+                              onClick={() => showApproveConfirm(payment.id)}
+                              disabled={processingId === payment.id}
+                              className="p-2 bg-green-600 hover:bg-green-700 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Duyệt"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -587,18 +548,10 @@ const PaymentAdmin = () => {
                   <button
                     onClick={() => showApproveConfirm(selectedPayment.id)}
                     disabled={processingId === selectedPayment.id}
-                    className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     <CheckCircle className="w-5 h-5" />
                     Duyệt thanh toán
-                  </button>
-                  <button
-                    onClick={() => showRejectConfirm(selectedPayment.id)}
-                    disabled={processingId === selectedPayment.id}
-                    className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <XCircle className="w-5 h-5" />
-                    Từ chối
                   </button>
                 </div>
               )}
@@ -612,25 +565,15 @@ const PaymentAdmin = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gray-800 border border-gray-600 rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-start gap-4 mb-6">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                confirmAction === "approve" 
-                  ? "bg-green-500/20" 
-                  : "bg-red-500/20"
-              }`}>
-                {confirmAction === "approve" ? (
-                  <CheckCircle className="w-6 h-6 text-green-400" />
-                ) : (
-                  <XCircle className="w-6 h-6 text-red-400" />
-                )}
+              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500/20">
+                <CheckCircle className="w-6 h-6 text-green-400" />
               </div>
               <div className="flex-1">
                 <h3 className="text-xl font-bold text-white mb-2">
-                  {confirmAction === "approve" ? "Duyệt thanh toán" : "Từ chối thanh toán"}
+                  Duyệt thanh toán
                 </h3>
                 <p className="text-gray-300">
-                  {confirmAction === "approve" 
-                    ? "Bạn có chắc chắn muốn duyệt thanh toán này?" 
-                    : "Bạn có chắc chắn muốn từ chối thanh toán này?"}
+                  Bạn có chắc chắn muốn duyệt thanh toán này?
                 </p>
               </div>
             </div>
@@ -645,11 +588,7 @@ const PaymentAdmin = () => {
               <button
                 onClick={handleConfirm}
                 disabled={processingId === confirmPaymentId}
-                className={`flex-1 px-4 py-3 rounded-lg text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  confirmAction === "approve"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-red-600 hover:bg-red-700"
-                }`}
+                className="flex-1 px-4 py-3 rounded-lg text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-green-600 hover:bg-green-700"
               >
                 {processingId === confirmPaymentId ? "Đang xử lý..." : "Xác nhận"}
               </button>
